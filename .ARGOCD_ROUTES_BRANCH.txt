@@ -1,0 +1,10 @@
+# ArgoCD Routes Implementation
+
+This branch will add HTTP API routes for the ArgoCD connector.
+
+## Files to implement:
+- src/api/routes/argocd.ts
+- src/api/routes/argocd.test.ts
+- Update src/app.ts
+
+See PR for details.
