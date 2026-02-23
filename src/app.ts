@@ -1,4 +1,4 @@
-import express, { Application, Request, Response, NextFunction } from 'express';
+import express, { Application, Router, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -38,10 +38,13 @@ app.get('/', (_req: Request, res: Response) => {
 });
 
 // Routes
+const apiV1Router = Router();
+apiV1Router.use('/inventory', inventoryRouter);
+apiV1Router.use('/proxmox', proxmoxRouter);
+apiV1Router.use('/argocd', argoCDRouter);
+
 app.use(metricsRouter);
-app.use('/api/v1/inventory', inventoryRouter);
-app.use('/api/v1/proxmox', proxmoxRouter);
-app.use('/api/v1/argocd', argoCDRouter);
+app.use('/api/v1', apiV1Router);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
