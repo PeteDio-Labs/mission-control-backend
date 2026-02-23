@@ -6,6 +6,7 @@ import { logger } from './utils/logger';
 import metricsRouter from './api/routes/metrics';
 import inventoryRouter from './api/routes/inventory';
 import proxmoxRouter from './api/routes/proxmox';
+import argoCDRouter from './api/routes/argocd';
 
 const app: Application = express();
 
@@ -40,6 +41,7 @@ app.get('/', (_req: Request, res: Response) => {
 app.use(metricsRouter);
 app.use('/api/v1/inventory', inventoryRouter);
 app.use('/api/v1/proxmox', proxmoxRouter);
+app.use('/api/v1/argocd', argoCDRouter);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
