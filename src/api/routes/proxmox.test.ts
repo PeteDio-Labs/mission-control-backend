@@ -172,15 +172,20 @@ describe('Proxmox API Routes', () => {
       expect(res.json).toHaveBeenCalledWith({ data: mockResources });
     });
 
-    it('should filter by type when provided', async () => {
+    it('should filter by type=vm from all nodes', async () => {
       const { req, res, next } = createMockRequestResponse();
       req.app.locals = { proxmoxConnector: mockConnector };
       req.query = { type: 'vm' };
-      mockGetClusterResources.mockResolvedValue([]);
+      const mockVM = { vmid: 100, name: 'test-vm', node: 'node1', status: 'running' };
+      mockConnector.getNodes.mockResolvedValue([{ node: 'node1' }, { node: 'node2' }]);
+      mockConnector.getVMs.mockResolvedValue([mockVM]);
 
       await getClusterResources(req, res, next);
 
-      expect(mockGetClusterResources).toHaveBeenCalledWith('vm');
+      expect(mockConnector.getNodes).toHaveBeenCalled();
+      expect(mockConnector.getVMs).toHaveBeenCalledWith('node1');
+      expect(mockConnector.getVMs).toHaveBeenCalledWith('node2');
+      expect(res.json).toHaveBeenCalledWith({ data: [mockVM, mockVM] });
     });
 
     it('should ignore invalid type filter', async () => {

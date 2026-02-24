@@ -118,9 +118,27 @@ export async function getClusterResources(
       return;
     }
 
-    const validTypes = ['node', 'vm', 'storage'] as const;
-    const filterType = typeof type === 'string' && validTypes.includes(type as 'node' | 'vm' | 'storage')
-      ? (type as 'node' | 'vm' | 'storage')
+    // Handle VM resources specially - collect from all nodes
+    if (type === 'vm') {
+      const nodes = await connector.getNodes();
+      const allVMs = [];
+
+      for (const node of nodes) {
+        try {
+          const vms = await connector.getVMs(node.node);
+          allVMs.push(...vms);
+        } catch (error) {
+          logger.warn(`Failed to get VMs for node ${node.node}:`, error);
+        }
+      }
+
+      res.json({ data: allVMs });
+      return;
+    }
+
+    const validTypes = ['node', 'storage'] as const;
+    const filterType = typeof type === 'string' && validTypes.includes(type as 'node' | 'storage')
+      ? (type as 'node' | 'storage')
       : undefined;
     const resources = await connector.getClusterResources(filterType);
     res.json({ data: resources });
