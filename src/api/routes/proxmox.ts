@@ -89,7 +89,7 @@ export async function getNodeStatus(
 /**
  * GET /api/v1/proxmox/resources
  * Get all cluster resources in a single call (nodes, VMs, LXCs)
- * Query: ?type=node|vm|storage
+ * Query: ?type=node|vm|storage|lxc
  */
 export async function getClusterResources(
   req: Request,
@@ -99,9 +99,46 @@ export async function getClusterResources(
   try {
     const { type } = req.query;
     const connector = getConnector(req);
-    const validTypes = ['node', 'vm', 'storage'] as const;
-    const filterType = typeof type === 'string' && validTypes.includes(type as any)
-      ? (type as 'node' | 'vm' | 'storage')
+
+    // Handle LXC resources specially - collect from all nodes
+    if (type === 'lxc') {
+      const nodes = await connector.getNodes();
+      const allLXCs = [];
+
+      for (const node of nodes) {
+        try {
+          const lxcs = await connector.getLXCs(node.node);
+          allLXCs.push(...lxcs);
+        } catch (error) {
+          logger.warn(`Failed to get LXCs for node ${node.node}:`, error);
+        }
+      }
+
+      res.json({ data: allLXCs });
+      return;
+    }
+
+    // Handle VM resources specially - collect from all nodes
+    if (type === 'vm') {
+      const nodes = await connector.getNodes();
+      const allVMs = [];
+
+      for (const node of nodes) {
+        try {
+          const vms = await connector.getVMs(node.node);
+          allVMs.push(...vms);
+        } catch (error) {
+          logger.warn(`Failed to get VMs for node ${node.node}:`, error);
+        }
+      }
+
+      res.json({ data: allVMs });
+      return;
+    }
+
+    const validTypes = ['node', 'storage'] as const;
+    const filterType = typeof type === 'string' && validTypes.includes(type as 'node' | 'storage')
+      ? (type as 'node' | 'storage')
       : undefined;
     const resources = await connector.getClusterResources(filterType);
     res.json({ data: resources });
