@@ -98,7 +98,7 @@ export class ArgoCDConnector {
   private insecure: boolean;
 
   constructor(server?: string, token?: string, insecure: boolean = true) {
-    this.server = server || process.env.ARGOCD_SERVER || 'http://argocd-server.argocd.svc.cluster.local:8080';
+    this.server = server || process.env.ARGOCD_SERVER || 'http://argocd-server.argocd.svc.cluster.local';
     this.token = token || process.env.ARGOCD_AUTH_TOKEN || '';
     this.insecure = insecure;
 

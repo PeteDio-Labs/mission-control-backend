@@ -3,9 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { logger } from './utils/logger';
-import metricsRouter from './api/routes/metrics';
-import inventoryRouter from './api/routes/inventory';
-import proxmoxRouter from './api/routes/proxmox';
+import routes from './api/routes';
 
 const app: Application = express();
 
@@ -37,9 +35,7 @@ app.get('/', (_req: Request, res: Response) => {
 });
 
 // Routes
-app.use(metricsRouter);
-app.use('/api/v1/inventory', inventoryRouter);
-app.use('/api/v1/proxmox', proxmoxRouter);
+app.use(routes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
