@@ -83,7 +83,7 @@ export class OllamaLLMAdapter {
     prompt: string,
     tools?: LLMTool[],
     model?: string,
-    options?: {
+    _options?: {
       temperature?: number;
       top_p?: number;
       max_tokens?: number;
@@ -132,7 +132,7 @@ export class OllamaLLMAdapter {
   async generate(
     prompt: string,
     model?: string,
-    options?: {
+    _options?: {
       temperature?: number;
       top_p?: number;
       max_tokens?: number;

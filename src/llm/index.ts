@@ -4,6 +4,9 @@
  * Phase 3B.2 - LLM Provider Adapters
  */
 
+import { OllamaLLMAdapter } from './adapters/ollama';
+import { LLMAdapterConfig } from './base';
+
 export { OllamaLLMAdapter } from './adapters/ollama';
 export type { LLMTool, LLMResponse } from './adapters/ollama';
 
@@ -34,9 +37,7 @@ export class LLMAdapterFactory {
    *   model: 'mistral'
    * });
    */
-  static create(config: any) {
-    const { OllamaLLMAdapter } = require('./adapters/ollama');
-
+  static create(config: LLMAdapterConfig) {
     switch (config.type) {
       case 'ollama':
         return OllamaLLMAdapter.create(config.baseUrl, config.model);
