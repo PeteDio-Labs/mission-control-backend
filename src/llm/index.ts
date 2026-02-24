@@ -17,8 +17,6 @@ export {
   TaskExecutionContext,
 } from './base';
 
-export type { ILLMAdapter };
-
 /**
  * Factory for creating LLM adapters
  * Phase 3B.2 - Future: Gemini and Claude adapters
@@ -87,5 +85,3 @@ export class LLMAdapterFactory {
     return available;
   }
 }
-
-export { LLMAdapterFactory };
