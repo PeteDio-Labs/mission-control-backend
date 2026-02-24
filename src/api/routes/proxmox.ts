@@ -89,7 +89,7 @@ export async function getNodeStatus(
 /**
  * GET /api/v1/proxmox/resources
  * Get all cluster resources in a single call (nodes, VMs, LXCs)
- * Query: ?type=node|vm|storage
+ * Query: ?type=node|vm|storage|lxc
  */
 export async function getClusterResources(
   req: Request,
@@ -99,6 +99,25 @@ export async function getClusterResources(
   try {
     const { type } = req.query;
     const connector = getConnector(req);
+
+    // Handle LXC resources specially - collect from all nodes
+    if (type === 'lxc') {
+      const nodes = await connector.getNodes();
+      const allLXCs = [];
+
+      for (const node of nodes) {
+        try {
+          const lxcs = await connector.getLXCs(node.node);
+          allLXCs.push(...lxcs);
+        } catch (error) {
+          logger.warn(`Failed to get LXCs for node ${node.node}:`, error);
+        }
+      }
+
+      res.json({ data: allLXCs });
+      return;
+    }
+
     const validTypes = ['node', 'vm', 'storage'] as const;
     const filterType = typeof type === 'string' && validTypes.includes(type as 'node' | 'vm' | 'storage')
       ? (type as 'node' | 'vm' | 'storage')
