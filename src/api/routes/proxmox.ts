@@ -100,7 +100,7 @@ export async function getClusterResources(
     const { type } = req.query;
     const connector = getConnector(req);
     const validTypes = ['node', 'vm', 'storage'] as const;
-    const filterType = typeof type === 'string' && validTypes.includes(type as any)
+    const filterType = typeof type === 'string' && validTypes.includes(type as 'node' | 'vm' | 'storage')
       ? (type as 'node' | 'vm' | 'storage')
       : undefined;
     const resources = await connector.getClusterResources(filterType);
