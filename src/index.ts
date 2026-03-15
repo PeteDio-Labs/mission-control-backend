@@ -6,6 +6,7 @@ import { ProxmoxConnector } from './connectors/proxmox';
 import { ArgoCDConnector } from './connectors/argocd';
 import { PrometheusConnector } from './connectors/prometheus';
 import { OllamaConnector } from './connectors/ollama';
+import { NotificationClient } from './connectors/notification';
 import { syncDiscoveredInventory } from './db/inventory';
 import app from './app';
 
@@ -67,6 +68,22 @@ async function startServer() {
       }
     } else {
       logger.info('ℹ️ Prometheus connector skipped (missing configuration)');
+    }
+
+    // Initialize Notification Service client (optional)
+    if (NotificationClient.isConfigured()) {
+      const notificationClient = new NotificationClient();
+      const connected = await notificationClient.testConnection();
+      if (connected) {
+        app.locals.notificationClient = notificationClient;
+        logger.info('✅ Notification service client initialized');
+      } else {
+        // Still store it — events will be published when service comes up
+        app.locals.notificationClient = notificationClient;
+        logger.warn('⚠️ Notification service not reachable (will retry on publish)');
+      }
+    } else {
+      logger.info('ℹ️ Notification service client skipped (NOTIFICATION_SERVICE_URL not set)');
     }
 
     // Initialize Ollama connector (optional)

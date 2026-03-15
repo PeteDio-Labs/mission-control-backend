@@ -191,6 +191,55 @@ describe('ArgoCD API Routes', () => {
       expect(res.json).toHaveBeenCalledWith({ data: mockResult });
     });
 
+    it('should publish notification event on successful sync', async () => {
+      const { req, res, next } = createMockRequestResponse();
+      const mockPublishEvent = vi.fn();
+      req.app.locals = {
+        argoCDConnector: mockConnector,
+        notificationClient: { publishEvent: mockPublishEvent },
+      };
+      req.params = { name: 'blog-dev' };
+      mockSyncApp.mockResolvedValue({ success: true, message: 'Sync initiated' });
+
+      await syncApp(req, res, next);
+
+      expect(mockPublishEvent).toHaveBeenCalledWith({
+        source: 'argocd',
+        type: 'rollout',
+        severity: 'info',
+        message: 'ArgoCD sync triggered for blog-dev',
+        affected_service: 'blog-dev',
+      });
+    });
+
+    it('should not publish notification event on failed sync', async () => {
+      const { req, res, next } = createMockRequestResponse();
+      const mockPublishEvent = vi.fn();
+      req.app.locals = {
+        argoCDConnector: mockConnector,
+        notificationClient: { publishEvent: mockPublishEvent },
+      };
+      req.params = { name: 'my-app' };
+      mockSyncApp.mockResolvedValue({ success: false, error: 'App not found' });
+
+      await syncApp(req, res, next);
+
+      expect(mockPublishEvent).not.toHaveBeenCalled();
+    });
+
+    it('should work without notification client configured', async () => {
+      const { req, res, next } = createMockRequestResponse();
+      req.app.locals = { argoCDConnector: mockConnector };
+      req.params = { name: 'my-app' };
+      mockSyncApp.mockResolvedValue({ success: true, message: 'Sync initiated' });
+
+      await syncApp(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({
+        data: { success: true, message: 'Sync initiated' },
+      });
+    });
+
     it('should return 500 when connector is not available', async () => {
       const { req, res, next } = createMockRequestResponse();
       req.app.locals = {};

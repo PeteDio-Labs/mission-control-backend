@@ -5,6 +5,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { ArgoCDConnector } from '../../connectors/argocd';
+import { NotificationClient } from '../../connectors/notification';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -99,6 +100,19 @@ export async function syncApp(
     const { name } = req.params;
     const connector = getConnector(req);
     const result = await connector.syncApp(name);
+
+    // Publish event to notification service (fire-and-forget)
+    const notificationClient = req.app.locals.notificationClient as NotificationClient | undefined;
+    if (notificationClient && result.success) {
+      notificationClient.publishEvent({
+        source: 'argocd',
+        type: 'rollout',
+        severity: 'info',
+        message: `ArgoCD sync triggered for ${name}`,
+        affected_service: name,
+      });
+    }
+
     res.json({ data: result });
   } catch (error) {
     logger.error('Failed to sync ArgoCD app:', error);

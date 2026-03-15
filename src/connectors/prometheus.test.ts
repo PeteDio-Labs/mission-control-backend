@@ -57,7 +57,7 @@ describe('PrometheusConnector', () => {
 
       expect(mockedAxios.create).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          baseURL: 'http://prometheus-server.observability-stack:9090',
+          baseURL: 'http://kube-prom-stack-kube-prome-prometheus.observability.svc.cluster.local:9090',
         })
       );
     });

@@ -106,6 +106,21 @@ export const llmRequestDuration = new Histogram({
   registers: [register],
 });
 
+// Notification service metrics
+export const notificationPublishTotal = new Counter({
+  name: 'mission_control_notification_publish_total',
+  help: 'Total events published to notification service',
+  labelNames: ['status'],
+  registers: [register],
+});
+
+export const notificationPublishDuration = new Histogram({
+  name: 'mission_control_notification_publish_duration_seconds',
+  help: 'Notification service publish duration in seconds',
+  buckets: [0.01, 0.05, 0.1, 0.5, 1, 2],
+  registers: [register],
+});
+
 // API endpoint metrics
 export const apiRequestsTotal = new Counter({
   name: 'mission_control_api_requests_total',

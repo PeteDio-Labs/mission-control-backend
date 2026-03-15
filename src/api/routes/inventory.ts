@@ -7,6 +7,7 @@ import { Router, Request, Response, NextFunction, Application } from 'express';
 import type { HostStatus, WorkloadStatus, HealthStatus } from '../../db/types';
 import { KubernetesConnector } from '../../connectors/kubernetes';
 import { ProxmoxConnector } from '../../connectors/proxmox';
+import { NotificationClient } from '../../connectors/notification';
 import * as inventory from '../../db/inventory';
 import { logger } from '../../utils/logger';
 
@@ -238,6 +239,18 @@ export async function syncInventory(
         hostsCount: merged.hosts.length,
         workloadsCount: merged.workloads.length,
     });
+
+    // Publish event to notification service (fire-and-forget)
+    const notificationClient = req.app.locals.notificationClient as NotificationClient | undefined;
+    if (notificationClient) {
+      notificationClient.publishEvent({
+        source: 'kubernetes',
+        type: 'deployment',
+        severity: 'info',
+        message: `Inventory sync completed: ${merged.hosts.length} hosts, ${merged.workloads.length} workloads`,
+        metadata: { ...stats, hostsCount: merged.hosts.length, workloadsCount: merged.workloads.length },
+      });
+    }
 
     res.json({
       data: {

@@ -14,21 +14,44 @@ import type {
   V1Pod,
 } from '@kubernetes/client-node';
 
-const mockCoreApi = {
-  listNode: vi.fn(),
-  listNamespace: vi.fn(),
-  listNamespacedPod: vi.fn(),
-  readNamespacedPod: vi.fn(),
-  readNamespacedPodLog: vi.fn(),
-};
-const mockAppsApi = {
-  listNamespacedDeployment: vi.fn(),
-  listNamespacedStatefulSet: vi.fn(),
-  readNamespacedDeployment: vi.fn(),
-  patchNamespacedDeployment: vi.fn(),
-};
-const MockCoreV1Api = vi.fn();
-const MockAppsV1Api = vi.fn();
+// vi.hoisted runs before vi.mock hoisting, so these are available in the factory
+const { mockCoreApi, mockAppsApi, CORE_V1_SENTINEL, APPS_V1_SENTINEL } = vi.hoisted(() => {
+  const mockCoreApi = {
+    listNode: vi.fn(),
+    listNamespace: vi.fn(),
+    listNamespacedPod: vi.fn(),
+    readNamespacedPod: vi.fn(),
+    readNamespacedPodLog: vi.fn(),
+  };
+  const mockAppsApi = {
+    listNamespacedDeployment: vi.fn(),
+    listNamespacedStatefulSet: vi.fn(),
+    readNamespacedDeployment: vi.fn(),
+    patchNamespacedDeployment: vi.fn(),
+  };
+  const CORE_V1_SENTINEL = { __type: 'CoreV1Api' };
+  const APPS_V1_SENTINEL = { __type: 'AppsV1Api' };
+  return { mockCoreApi, mockAppsApi, CORE_V1_SENTINEL, APPS_V1_SENTINEL };
+});
+
+vi.mock('@kubernetes/client-node', () => ({
+  KubeConfig: vi.fn().mockImplementation(() => ({
+    loadFromDefault: vi.fn(),
+    loadFromFile: vi.fn((path: string) => {
+      if (path === '/invalid/path') {
+        throw new Error('Invalid kubeconfig');
+      }
+    }),
+    currentContext: 'test-cluster',
+    makeApiClient: vi.fn((ApiClass) => {
+      if (ApiClass === CORE_V1_SENTINEL) return mockCoreApi;
+      if (ApiClass === APPS_V1_SENTINEL) return mockAppsApi;
+      return {};
+    }),
+  })),
+  CoreV1Api: CORE_V1_SENTINEL,
+  AppsV1Api: APPS_V1_SENTINEL,
+}));
 
 const createNamespace = (name: string): V1Namespace => ({
   metadata: { name },
@@ -147,25 +170,6 @@ const createPod = (
   },
   ...overrides,
 });
-
-vi.mock('@kubernetes/client-node', () => ({
-  KubeConfig: vi.fn().mockImplementation(() => ({
-    loadFromDefault: vi.fn(),
-    loadFromFile: vi.fn((path: string) => {
-      if (path === '/invalid/path') {
-        throw new Error('Invalid kubeconfig');
-      }
-    }),
-    currentContext: 'test-cluster',
-    makeApiClient: vi.fn((ApiClass) => {
-      if (ApiClass === MockCoreV1Api) return mockCoreApi;
-      if (ApiClass === MockAppsV1Api) return mockAppsApi;
-      return {};
-    }),
-  })),
-  CoreV1Api: MockCoreV1Api,
-  AppsV1Api: MockAppsV1Api,
-}));
 
 describe('KubernetesConnector', () => {
   let connector: KubernetesConnector;
