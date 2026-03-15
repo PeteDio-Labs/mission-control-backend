@@ -43,7 +43,7 @@ export class PrometheusConnector {
   private url: string;
 
   constructor(url?: string) {
-    this.url = url || process.env.PROMETHEUS_URL || 'http://prometheus-server.observability-stack:9090';
+    this.url = url || process.env.PROMETHEUS_URL || 'http://kube-prom-stack-kube-prome-prometheus.observability.svc.cluster.local:9090';
 
     this.client = axios.create({
       baseURL: this.url,
