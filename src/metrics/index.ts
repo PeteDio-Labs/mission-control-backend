@@ -121,6 +121,19 @@ export const notificationPublishDuration = new Histogram({
   registers: [register],
 });
 
+// SSE event stream metrics
+export const sseConnections = new Gauge({
+  name: 'mission_control_sse_connections',
+  help: 'Number of active SSE client connections',
+  registers: [register],
+});
+
+export const sseEventsBroadcast = new Counter({
+  name: 'mission_control_sse_events_broadcast_total',
+  help: 'Total events broadcast to SSE clients',
+  registers: [register],
+});
+
 // API endpoint metrics
 export const apiRequestsTotal = new Counter({
   name: 'mission_control_api_requests_total',

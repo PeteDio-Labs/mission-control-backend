@@ -77,6 +77,29 @@ async function startServer() {
       if (connected) {
         app.locals.notificationClient = notificationClient;
         logger.info('✅ Notification service client initialized');
+
+        // Register as webhook subscriber for SSE relay
+        try {
+          const notifUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3002';
+          const backendUrl = `http://mission-control-backend.mission-control.svc.cluster.local:${PORT}`;
+          const subResponse = await fetch(`${notifUrl}/api/v1/subscriptions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              url: `${backendUrl}/api/v1/events/webhook`,
+              name: 'mc-backend-sse',
+              events: ['*'],
+              active: true,
+            }),
+          });
+          const subData = await subResponse.json();
+          logger.info('✅ Registered as webhook subscriber for SSE relay', {
+            subscriptionId: subData?.id,
+          });
+        } catch (subError) {
+          const msg = subError instanceof Error ? subError.message : 'Unknown error';
+          logger.warn('⚠️ Failed to register webhook subscription (SSE relay will not receive events)', { error: msg });
+        }
       } else {
         // Still store it — events will be published when service comes up
         app.locals.notificationClient = notificationClient;

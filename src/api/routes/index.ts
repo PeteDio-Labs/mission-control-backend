@@ -8,6 +8,7 @@ import metricsRouter from './metrics';
 import inventoryRouter from './inventory';
 import proxmoxRouter from './proxmox';
 import argoCDRouter from './argocd';
+import eventsRouter from './events';
 
 const routes = Router();
 
@@ -19,6 +20,7 @@ const apiV1Router = Router();
 apiV1Router.use('/inventory', inventoryRouter);
 apiV1Router.use('/proxmox', proxmoxRouter);
 apiV1Router.use('/argocd', argoCDRouter);
+apiV1Router.use('/events', eventsRouter);
 
 routes.use('/api/v1', apiV1Router);
 
