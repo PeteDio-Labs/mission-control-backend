@@ -90,22 +90,6 @@ export const taskExecutionDuration = new Histogram({
   registers: [register],
 });
 
-// LLM provider metrics
-export const llmRequestsTotal = new Counter({
-  name: 'mission_control_llm_requests_total',
-  help: 'Total LLM API requests',
-  labelNames: ['provider', 'status'],
-  registers: [register],
-});
-
-export const llmRequestDuration = new Histogram({
-  name: 'mission_control_llm_request_duration_seconds',
-  help: 'LLM API request duration in seconds',
-  labelNames: ['provider'],
-  buckets: [0.1, 0.5, 1, 2, 5, 10, 30],
-  registers: [register],
-});
-
 // Notification service metrics
 export const notificationPublishTotal = new Counter({
   name: 'mission_control_notification_publish_total',

@@ -107,7 +107,7 @@ CREATE TABLE task_events (
     run_id UUID NOT NULL REFERENCES task_runs(id) ON DELETE CASCADE,
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     type VARCHAR(100) NOT NULL CHECK (type IN (
-        'log', 'tool_call', 'tool_result', 'llm_request', 'llm_response',
+        'log', 'tool_call', 'tool_result',
         'approval_required', 'status_change', 'artifact', 'error'
     )),
     data JSONB NOT NULL DEFAULT '{}',
@@ -125,65 +125,6 @@ CREATE TABLE artifacts (
     label VARCHAR(500),
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- =============================================================================
--- LLM USAGE & COST TRACKING
--- =============================================================================
-
--- LLM Requests
-CREATE TABLE llm_requests (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    run_id UUID NOT NULL REFERENCES task_runs(id) ON DELETE CASCADE,
-    provider VARCHAR(50) NOT NULL CHECK (provider IN (
-        'ollama', 'claude', 'gemini', 'openai', 'github-models'
-    )),
-    model VARCHAR(100) NOT NULL,
-    tools_included BOOLEAN NOT NULL DEFAULT false,
-    tool_schema_bytes INTEGER DEFAULT 0,
-    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    duration_ms INTEGER
-);
-
--- LLM Responses
-CREATE TABLE llm_responses (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    request_id UUID NOT NULL REFERENCES llm_requests(id) ON DELETE CASCADE,
-    finish_reason VARCHAR(50) CHECK (finish_reason IN (
-        'stop', 'tool_calls', 'length', 'error', 'unknown'
-    )),
-    output_bytes INTEGER DEFAULT 0,
-    duration_ms INTEGER,
-    error_message TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Token Usage (denormalized for easy aggregation)
-CREATE TABLE token_usage (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    request_id UUID NOT NULL REFERENCES llm_requests(id) ON DELETE CASCADE,
-    run_id UUID NOT NULL REFERENCES task_runs(id) ON DELETE CASCADE,
-    provider VARCHAR(50) NOT NULL,
-    model VARCHAR(100) NOT NULL,
-    input_tokens INTEGER NOT NULL DEFAULT 0,
-    output_tokens INTEGER NOT NULL DEFAULT 0,
-    total_tokens INTEGER GENERATED ALWAYS AS (input_tokens + output_tokens) STORED,
-    estimated_cost_usd DECIMAL(10, 6) DEFAULT 0.00,
-    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    metadata JSONB DEFAULT '{}'
-);
-
--- Provider Pricing Config (static pricing table)
-CREATE TABLE provider_pricing (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    provider VARCHAR(50) NOT NULL,
-    model VARCHAR(100) NOT NULL,
-    input_token_price DECIMAL(12, 8) NOT NULL,  -- per 1M tokens
-    output_token_price DECIMAL(12, 8) NOT NULL, -- per 1M tokens
-    active_since DATE NOT NULL,
-    active_until DATE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(provider, model, active_since)
 );
 
 -- =============================================================================
@@ -296,22 +237,6 @@ CREATE INDEX idx_artifacts_run_id ON artifacts(run_id);
 CREATE INDEX idx_artifacts_type ON artifacts(type);
 
 -- LLM Requests
-CREATE INDEX idx_llm_requests_run_id ON llm_requests(run_id);
-CREATE INDEX idx_llm_requests_provider ON llm_requests(provider);
-CREATE INDEX idx_llm_requests_started_at ON llm_requests(started_at DESC);
-
--- Token Usage
-CREATE INDEX idx_token_usage_run_id ON token_usage(run_id);
-CREATE INDEX idx_token_usage_request_id ON token_usage(request_id);
-CREATE INDEX idx_token_usage_provider ON token_usage(provider);
-CREATE INDEX idx_token_usage_model ON token_usage(model);
-CREATE INDEX idx_token_usage_recorded_at ON token_usage(recorded_at DESC);
-CREATE INDEX idx_token_usage_provider_recorded ON token_usage(provider, recorded_at DESC);
-
--- Provider Pricing
-CREATE INDEX idx_provider_pricing_provider_model ON provider_pricing(provider, model);
-CREATE INDEX idx_provider_pricing_active ON provider_pricing(active_since, active_until);
-
 -- Tool Definitions
 CREATE INDEX idx_tool_definitions_name ON tool_definitions(name);
 CREATE INDEX idx_tool_definitions_risk_level ON tool_definitions(risk_level);
@@ -375,49 +300,6 @@ CREATE TRIGGER update_policies_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- =============================================================================
--- SEED DATA (default pricing for common providers)
--- =============================================================================
-
--- Ollama (local, free)
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('ollama', 'mistral', 0.00, 0.00, '2024-01-01');
-
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('ollama', 'llama2', 0.00, 0.00, '2024-01-01');
-
--- Gemini (free tier pricing estimates)
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('gemini', 'gemini-2.0-flash-exp', 0.00, 0.00, '2024-01-01');
-
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('gemini', 'gemini-pro', 0.50, 1.50, '2024-01-01');
-
--- Claude (Anthropic pricing as of 2024)
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('claude', 'claude-3-sonnet-20240229', 3.00, 15.00, '2024-02-01');
-
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('claude', 'claude-3-opus-20240229', 15.00, 75.00, '2024-02-01');
-
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('claude', 'claude-3-haiku-20240307', 0.25, 1.25, '2024-03-01');
-
--- OpenAI (pricing as of 2024)
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('openai', 'gpt-4-turbo', 10.00, 30.00, '2024-01-01');
-
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('openai', 'gpt-4', 30.00, 60.00, '2024-01-01');
-
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('openai', 'gpt-3.5-turbo', 0.50, 1.50, '2024-01-01');
-
--- GitHub Models (TBD - research phase)
-INSERT INTO provider_pricing (provider, model, input_token_price, output_token_price, active_since)
-VALUES ('github-models', 'gpt-4', 0.00, 0.00, '2024-01-01')
-ON CONFLICT DO NOTHING;
-
--- =============================================================================
 -- VIEWS (convenience queries)
 -- =============================================================================
 
@@ -426,22 +308,6 @@ CREATE VIEW active_task_runs AS
 SELECT * FROM task_runs
 WHERE status IN ('queued', 'planning', 'awaiting_approval', 'executing', 'paused')
 ORDER BY created_at DESC;
-
--- Recent token usage summary (last 30 days)
-CREATE VIEW recent_token_usage_summary AS
-SELECT
-    provider,
-    model,
-    COUNT(*) as request_count,
-    SUM(input_tokens) as total_input_tokens,
-    SUM(output_tokens) as total_output_tokens,
-    SUM(total_tokens) as total_tokens,
-    SUM(estimated_cost_usd) as total_cost_usd,
-    AVG(estimated_cost_usd) as avg_cost_usd
-FROM token_usage
-WHERE recorded_at >= NOW() - INTERVAL '30 days'
-GROUP BY provider, model
-ORDER BY total_cost_usd DESC;
 
 -- Tool call success rate
 CREATE VIEW tool_call_success_rate AS
@@ -467,5 +333,3 @@ COMMENT ON TABLE tasks IS 'Task templates or one-off task definitions';
 COMMENT ON TABLE task_runs IS 'Execution instances of tasks';
 COMMENT ON TABLE task_events IS 'Append-only log of task execution events';
 COMMENT ON TABLE audit_entries IS 'Immutable audit log for all system actions';
-COMMENT ON TABLE token_usage IS 'Denormalized token usage for easy cost tracking';
-COMMENT ON TABLE provider_pricing IS 'LLM provider pricing configuration (per 1M tokens)';

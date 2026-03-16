@@ -170,65 +170,6 @@ export interface Artifact {
 }
 
 // =============================================================================
-// LLM USAGE & COST TYPES
-// =============================================================================
-
-export type LLMProvider =
-  | 'ollama'
-  | 'claude'
-  | 'gemini'
-  | 'openai'
-  | 'github-models';
-
-export interface LLMRequest {
-  id: string;
-  run_id: string;
-  provider: LLMProvider;
-  model: string;
-  tools_included: boolean;
-  tool_schema_bytes: number;
-  started_at: Date;
-  duration_ms: number | null;
-}
-
-export type FinishReason = 'stop' | 'tool_calls' | 'length' | 'error' | 'unknown';
-
-export interface LLMResponse {
-  id: string;
-  request_id: string;
-  finish_reason: FinishReason | null;
-  output_bytes: number;
-  duration_ms: number | null;
-  error_message: string | null;
-  created_at: Date;
-}
-
-export interface TokenUsage {
-  id: string;
-  request_id: string;
-  run_id: string;
-  provider: LLMProvider;
-  model: string;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  estimated_cost_usd: string; // DECIMAL type
-  recorded_at: Date;
-  metadata: JsonObject;
-}
-
-export interface ProviderPricing {
-  id: string;
-  provider: LLMProvider;
-  model: string;
-  input_token_price: string; // DECIMAL type (per 1M tokens)
-  output_token_price: string; // DECIMAL type (per 1M tokens)
-  active_since: Date;
-  active_until: Date | null;
-  created_at: Date;
-}
-
-// =============================================================================
 // TOOLS & POLICIES TYPES
 // =============================================================================
 
@@ -312,17 +253,6 @@ export interface AuditEntry {
 // VIEW TYPES
 // =============================================================================
 
-export interface TokenUsageSummary {
-  provider: LLMProvider;
-  model: string;
-  request_count: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_tokens: number;
-  total_cost_usd: string;
-  avg_cost_usd: string;
-}
-
 export interface ToolCallSuccessRate {
   tool_name: string;
   total_calls: number;
@@ -342,9 +272,6 @@ export type CreateTask = Omit<Task, 'id' | 'created_at' | 'updated_at'>;
 export type CreateTaskRun = Omit<TaskRun, 'id' | 'created_at' | 'started_at' | 'ended_at'>;
 export type CreateTaskEvent = Omit<TaskEvent, 'id' | 'timestamp'>;
 export type CreateArtifact = Omit<Artifact, 'id' | 'created_at'>;
-export type CreateLLMRequest = Omit<LLMRequest, 'id' | 'started_at'>;
-export type CreateLLMResponse = Omit<LLMResponse, 'id' | 'created_at'>;
-export type CreateTokenUsage = Omit<TokenUsage, 'id' | 'total_tokens' | 'recorded_at'>;
 export type CreateToolDefinition = Omit<ToolDefinition, 'id' | 'created_at' | 'updated_at'>;
 export type CreateToolCallRecord = Omit<ToolCallRecord, 'id' | 'started_at'>;
 export type CreatePolicy = Omit<Policy, 'id' | 'created_at' | 'updated_at'>;

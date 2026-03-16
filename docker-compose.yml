@@ -49,12 +49,6 @@ services:
       
       PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus-server.observability-stack:9090}
       
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama.dev:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral}
-      
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-changeme}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-exp}
-      
       API_AUTH_TOKEN: ${API_AUTH_TOKEN:-dev-token-changeme}
       
       CORS_ORIGINS: "http://localhost:3001,http://localhost:5173"
