@@ -1,4 +1,4 @@
-name: Build and Push Mission Control Backend
+name: Build and Deploy Mission Control Backend
 
 on:
   push:
@@ -15,15 +15,14 @@ env:
   IMAGE_NAME: mission-control-backend
 
 jobs:
-  test:
+  build-and-push:
     runs-on: ubuntu-latest
-    name: Test and Lint
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Bun
+      - name: Set up Bun
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
@@ -39,46 +38,32 @@ jobs:
 
       - name: Run tests
         run: bun test
-        continue-on-error: true  # Tests may not exist yet
 
       - name: Build TypeScript
         run: bun run build
 
-  build-and-push:
-    runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name == 'push'
-    name: Build and Push Docker Image
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set image tag
-        id: tag
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "tag=latest" >> $GITHUB_OUTPUT
-            echo "env=prod" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            echo "tag=develop-latest" >> $GITHUB_OUTPUT
-            echo "env=dev" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${GITHUB_REF##*/}-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
-            echo "env=feature" >> $GITHUB_OUTPUT
-          fi
-
       - name: Log in to Nexus Docker Registry
+        if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.NEXUS_REGISTRY }}
           username: ${{ secrets.NEXUS_USERNAME }}
           password: ${{ secrets.NEXUS_PASSWORD }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set image tag
+        if: github.event_name == 'push'
+        id: tag
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "tag=develop-latest" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF##*/}-${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build and push Docker image
+        if: github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -86,21 +71,11 @@ jobs:
           tags: |
             ${{ env.NEXUS_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
             ${{ env.NEXUS_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=registry,ref=${{ env.NEXUS_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.NEXUS_REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
-      - name: Deployment Summary
+      - name: Summary
+        if: github.event_name == 'push'
         run: |
-          echo "### 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Summary :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Environment** | \`${{ steps.tag.outputs.env }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Image** | \`${{ env.NEXUS_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **SHA Tag** | \`${{ env.NEXUS_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Branch** | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Image successfully pushed to Nexus registry" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**ArgoCD will automatically deploy this image to the \`${{ steps.tag.outputs.env }}\` environment**" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker Image**: \`${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit SHA**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
