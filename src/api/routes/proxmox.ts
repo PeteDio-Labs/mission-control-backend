@@ -206,7 +206,7 @@ export async function startVM(
   try {
     const { node, vmid } = req.params;
     const connector = getConnector(req);
-    const result = await connector.startVM(node, vmid);
+    const result = await connector.startVM(node, Number(vmid));
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to start VM:', error);
@@ -228,7 +228,7 @@ export async function stopVM(
   try {
     const { node, vmid } = req.params;
     const connector = getConnector(req);
-    const result = await connector.stopVM(node, vmid);
+    const result = await connector.stopVM(node, Number(vmid));
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to stop VM:', error);
@@ -250,7 +250,7 @@ export async function restartVM(
   try {
     const { node, vmid } = req.params;
     const connector = getConnector(req);
-    const result = await connector.restartVM(node, vmid);
+    const result = await connector.restartVM(node, Number(vmid));
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to restart VM:', error);
@@ -272,7 +272,7 @@ export async function startLXC(
   try {
     const { node, vmid } = req.params;
     const connector = getConnector(req);
-    const result = await connector.startLXC(node, vmid);
+    const result = await connector.startLXC(node, Number(vmid));
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to start LXC:', error);
@@ -294,7 +294,7 @@ export async function stopLXC(
   try {
     const { node, vmid } = req.params;
     const connector = getConnector(req);
-    const result = await connector.stopLXC(node, vmid);
+    const result = await connector.stopLXC(node, Number(vmid));
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to stop LXC:', error);
@@ -316,7 +316,7 @@ export async function restartLXC(
   try {
     const { node, vmid } = req.params;
     const connector = getConnector(req);
-    const result = await connector.restartLXC(node, vmid);
+    const result = await connector.restartLXC(node, Number(vmid));
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to restart LXC:', error);

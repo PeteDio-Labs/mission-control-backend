@@ -14,25 +14,22 @@ import type {
   V1Pod,
 } from '@kubernetes/client-node';
 
-// vi.hoisted runs before vi.mock hoisting, so these are available in the factory
-const { mockCoreApi, mockAppsApi, CORE_V1_SENTINEL, APPS_V1_SENTINEL } = vi.hoisted(() => {
-  const mockCoreApi = {
-    listNode: vi.fn(),
-    listNamespace: vi.fn(),
-    listNamespacedPod: vi.fn(),
-    readNamespacedPod: vi.fn(),
-    readNamespacedPodLog: vi.fn(),
-  };
-  const mockAppsApi = {
-    listNamespacedDeployment: vi.fn(),
-    listNamespacedStatefulSet: vi.fn(),
-    readNamespacedDeployment: vi.fn(),
-    patchNamespacedDeployment: vi.fn(),
-  };
-  const CORE_V1_SENTINEL = { __type: 'CoreV1Api' };
-  const APPS_V1_SENTINEL = { __type: 'AppsV1Api' };
-  return { mockCoreApi, mockAppsApi, CORE_V1_SENTINEL, APPS_V1_SENTINEL };
-});
+// Declare mocks at top level (Bun's test runner doesn't support vi.hoisted)
+const mockCoreApi = {
+  listNode: vi.fn(),
+  listNamespace: vi.fn(),
+  listNamespacedPod: vi.fn(),
+  readNamespacedPod: vi.fn(),
+  readNamespacedPodLog: vi.fn(),
+};
+const mockAppsApi = {
+  listNamespacedDeployment: vi.fn(),
+  listNamespacedStatefulSet: vi.fn(),
+  readNamespacedDeployment: vi.fn(),
+  patchNamespacedDeployment: vi.fn(),
+};
+const CORE_V1_SENTINEL = { __type: 'CoreV1Api' };
+const APPS_V1_SENTINEL = { __type: 'AppsV1Api' };
 
 vi.mock('@kubernetes/client-node', () => ({
   KubeConfig: vi.fn().mockImplementation(() => ({
