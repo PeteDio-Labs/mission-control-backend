@@ -5,6 +5,7 @@
 
 import axios, { AxiosInstance } from 'axios';
 import { logger } from '../utils/logger';
+import { prometheusAvailable, prometheusRequestDuration } from '../metrics/index';
 
 export interface PrometheusResult {
   metric: Record<string, string>;
@@ -60,11 +61,16 @@ export class PrometheusConnector {
    * Test connection to Prometheus API
    */
   async testConnection(): Promise<boolean> {
+    const start = Date.now();
     try {
       await this.client.get('/api/v1/status/config');
+      prometheusRequestDuration.observe((Date.now() - start) / 1000);
+      prometheusAvailable.set(1);
       logger.info('Prometheus connection test successful');
       return true;
     } catch (error) {
+      prometheusRequestDuration.observe((Date.now() - start) / 1000);
+      prometheusAvailable.set(0);
       logger.error('Prometheus connection test failed', { error });
       return false;
     }
@@ -74,6 +80,7 @@ export class PrometheusConnector {
    * Execute an instant query
    */
   async queryInstant(query: string, time?: string): Promise<PrometheusResponse> {
+    const start = Date.now();
     try {
       const params: Record<string, string> = { query };
       if (time) {
@@ -81,9 +88,13 @@ export class PrometheusConnector {
       }
 
       const response = await this.client.get('/api/v1/query', { params });
+      prometheusRequestDuration.observe((Date.now() - start) / 1000);
+      prometheusAvailable.set(1);
       logger.debug('Prometheus instant query executed', { query, resultCount: response.data.data?.result?.length || 0 });
       return response.data;
     } catch (error: unknown) {
+      prometheusRequestDuration.observe((Date.now() - start) / 1000);
+      prometheusAvailable.set(0);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to execute Prometheus instant query', { query, error: errorMsg });
       throw error;

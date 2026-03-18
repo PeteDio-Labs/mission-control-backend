@@ -6,6 +6,7 @@
 import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 import { logger } from '../utils/logger';
+import { argoCdAvailable, argoCdRequestDuration } from '../metrics/index';
 
 export interface ArgoApplication {
   metadata: {
@@ -131,11 +132,16 @@ export class ArgoCDConnector {
    * Test connection to ArgoCD API
    */
   async testConnection(): Promise<boolean> {
+    const start = Date.now();
     try {
       await this.client.get('/api/version');
+      argoCdRequestDuration.observe((Date.now() - start) / 1000);
+      argoCdAvailable.set(1);
       logger.info('ArgoCD connection test successful');
       return true;
     } catch (error) {
+      argoCdRequestDuration.observe((Date.now() - start) / 1000);
+      argoCdAvailable.set(0);
       let errorMsg = 'Unknown error';
       if (error && typeof error === 'object' && 'message' in error) {
         errorMsg = (error as Error).message;
@@ -153,12 +159,17 @@ export class ArgoCDConnector {
    * Get all ArgoCD applications
    */
   async getApplications(): Promise<ArgoApplication[]> {
+    const start = Date.now();
     try {
       const response = await this.client.get('/api/v1/applications');
+      argoCdRequestDuration.observe((Date.now() - start) / 1000);
+      argoCdAvailable.set(1);
       const items = response.data.items || [];
       logger.info('Retrieved ArgoCD applications', { count: items.length });
       return items;
     } catch (error) {
+      argoCdRequestDuration.observe((Date.now() - start) / 1000);
+      argoCdAvailable.set(0);
       logger.error('Failed to get ArgoCD applications', { error });
       throw error;
     }

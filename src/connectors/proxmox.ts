@@ -8,6 +8,7 @@ import https from 'https';
 import crypto from 'crypto';
 import type { Host, HostStatus, Workload, WorkloadStatus } from '../db/types';
 import { logger } from '../utils/logger';
+import { proxmoxAvailable, proxmoxRequestDuration } from '../metrics/index';
 
 export interface ProxmoxNode {
   node: string;
@@ -163,12 +164,17 @@ export class ProxmoxConnector {
   }
 
   async testConnection(): Promise<boolean> {
+    const start = Date.now();
     try {
       const client = this.ensureClient();
       await client.get('/api2/json/version');
+      proxmoxRequestDuration.observe((Date.now() - start) / 1000);
+      proxmoxAvailable.set(1);
       logger.info('Proxmox connection test successful');
       return true;
     } catch (error) {
+      proxmoxRequestDuration.observe((Date.now() - start) / 1000);
+      proxmoxAvailable.set(0);
       logger.error('Proxmox connection test failed', { error });
       return false;
     }
@@ -191,8 +197,17 @@ export class ProxmoxConnector {
 
   async getNodes(): Promise<ProxmoxNode[]> {
     const client = this.ensureClient();
-    const response = await client.get('/api2/json/nodes');
-    return (response.data?.data ?? []) as ProxmoxNode[];
+    const start = Date.now();
+    try {
+      const response = await client.get('/api2/json/nodes');
+      proxmoxRequestDuration.observe((Date.now() - start) / 1000);
+      proxmoxAvailable.set(1);
+      return (response.data?.data ?? []) as ProxmoxNode[];
+    } catch (error) {
+      proxmoxRequestDuration.observe((Date.now() - start) / 1000);
+      proxmoxAvailable.set(0);
+      throw error;
+    }
   }
 
   async getVMs(node: string): Promise<ProxmoxVM[]> {

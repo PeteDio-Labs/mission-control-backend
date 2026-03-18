@@ -9,6 +9,13 @@ import { NotificationClient } from './connectors/notification';
 import { QBittorrentConnector } from './connectors/qbittorrent';
 import { syncDiscoveredInventory } from './db/inventory';
 import app from './app';
+import {
+  appUp,
+  kubernetesAvailable,
+  proxmoxAvailable,
+  argoCdAvailable,
+  prometheusAvailable,
+} from './metrics/index';
 
 // Load environment variables
 dotenv.config();
@@ -27,6 +34,7 @@ async function startServer() {
     const connector = new KubernetesConnector(process.env.KUBECONFIG_PATH);
     await connector.initialize();
     app.locals.kubernetesConnector = connector;
+    kubernetesAvailable.set(1);
     logger.info('✅ Kubernetes connector initialized');
 
     if (
@@ -37,6 +45,7 @@ async function startServer() {
       const proxmoxConnector = new ProxmoxConnector();
       await proxmoxConnector.initialize();
       app.locals.proxmoxConnector = proxmoxConnector;
+      proxmoxAvailable.set(1);
       logger.info('✅ Proxmox connector initialized');
     } else {
       logger.info('ℹ️ Proxmox connector skipped (missing credentials)');
@@ -48,8 +57,10 @@ async function startServer() {
       const connected = await argoCDConnector.testConnection();
       if (connected) {
         app.locals.argoCDConnector = argoCDConnector;
+        argoCdAvailable.set(1);
         logger.info('✅ ArgoCD connector initialized');
       } else {
+        argoCdAvailable.set(0);
         logger.warn('⚠️ ArgoCD connector failed connection test');
       }
     } else {
@@ -62,8 +73,10 @@ async function startServer() {
       const connected = await prometheusConnector.testConnection();
       if (connected) {
         app.locals.prometheusConnector = prometheusConnector;
+        prometheusAvailable.set(1);
         logger.info('✅ Prometheus connector initialized');
       } else {
+        prometheusAvailable.set(0);
         logger.warn('⚠️ Prometheus connector failed connection test');
       }
     } else {
@@ -152,6 +165,7 @@ async function startServer() {
     }
 
     server = app.listen(PORT, () => {
+      appUp.set(1);
       logger.info(`🚀 Mission Control Backend listening on port ${PORT}`);
       logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
     });

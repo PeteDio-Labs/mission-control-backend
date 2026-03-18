@@ -15,6 +15,7 @@ import {
 } from '@kubernetes/client-node';
 import type { Host, Workload, HealthStatus } from '../db/types';
 import { logger } from '../utils/logger';
+import { kubernetesAvailable, kubernetesRequestDuration } from '../metrics/index';
 
 export interface Inventory {
   hosts: Host[];
@@ -100,12 +101,17 @@ export class KubernetesConnector {
       return this.mockNodes;
     }
 
+    const start = Date.now();
     try {
       const response = await this.coreApi.listNode();
       const nodes = response.body.items || [];
 
+      kubernetesRequestDuration.observe((Date.now() - start) / 1000);
+      kubernetesAvailable.set(1);
       return nodes.map((node: V1Node) => this.convertNodeToHost(node));
     } catch (error) {
+      kubernetesRequestDuration.observe((Date.now() - start) / 1000);
+      kubernetesAvailable.set(0);
       logger.error('Failed to discover nodes:', error);
       throw error;
     }
