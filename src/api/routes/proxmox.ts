@@ -194,15 +194,156 @@ export async function getLXCs(
   }
 }
 
+/**
+ * POST /api/v1/proxmox/nodes/:node/vms/:vmid/start
+ * Start a VM (SAFE_MUTATE)
+ */
+export async function startVM(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { node, vmid } = req.params;
+    const connector = getConnector(req);
+    const result = await connector.startVM(node, vmid);
+    res.json({ data: { success: true, message: result } });
+  } catch (error) {
+    logger.error('Failed to start VM:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to start VM',
+    });
+  }
+}
+
+/**
+ * POST /api/v1/proxmox/nodes/:node/vms/:vmid/stop
+ * Stop a VM (SAFE_MUTATE)
+ */
+export async function stopVM(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { node, vmid } = req.params;
+    const connector = getConnector(req);
+    const result = await connector.stopVM(node, vmid);
+    res.json({ data: { success: true, message: result } });
+  } catch (error) {
+    logger.error('Failed to stop VM:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to stop VM',
+    });
+  }
+}
+
+/**
+ * POST /api/v1/proxmox/nodes/:node/vms/:vmid/restart
+ * Restart a VM (SAFE_MUTATE)
+ */
+export async function restartVM(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { node, vmid } = req.params;
+    const connector = getConnector(req);
+    const result = await connector.restartVM(node, vmid);
+    res.json({ data: { success: true, message: result } });
+  } catch (error) {
+    logger.error('Failed to restart VM:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to restart VM',
+    });
+  }
+}
+
+/**
+ * POST /api/v1/proxmox/nodes/:node/lxc/:vmid/start
+ * Start an LXC container (SAFE_MUTATE)
+ */
+export async function startLXC(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { node, vmid } = req.params;
+    const connector = getConnector(req);
+    const result = await connector.startLXC(node, vmid);
+    res.json({ data: { success: true, message: result } });
+  } catch (error) {
+    logger.error('Failed to start LXC:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to start LXC',
+    });
+  }
+}
+
+/**
+ * POST /api/v1/proxmox/nodes/:node/lxc/:vmid/stop
+ * Stop an LXC container (SAFE_MUTATE)
+ */
+export async function stopLXC(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { node, vmid } = req.params;
+    const connector = getConnector(req);
+    const result = await connector.stopLXC(node, vmid);
+    res.json({ data: { success: true, message: result } });
+  } catch (error) {
+    logger.error('Failed to stop LXC:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to stop LXC',
+    });
+  }
+}
+
+/**
+ * POST /api/v1/proxmox/nodes/:node/lxc/:vmid/restart
+ * Restart an LXC container (SAFE_MUTATE)
+ */
+export async function restartLXC(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { node, vmid } = req.params;
+    const connector = getConnector(req);
+    const result = await connector.restartLXC(node, vmid);
+    res.json({ data: { success: true, message: result } });
+  } catch (error) {
+    logger.error('Failed to restart LXC:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to restart LXC',
+    });
+  }
+}
+
 // ============================================================================
-// ROUTER SETUP (READ_ONLY)
+// ROUTER SETUP
 // ============================================================================
 
+// Read-only
 router.get('/status', getStatus);
 router.get('/resources', getClusterResources);
 router.get('/nodes', getNodes);
 router.get('/nodes/:node/status', getNodeStatus);
 router.get('/nodes/:node/vms', getVMs);
 router.get('/nodes/:node/lxc', getLXCs);
+
+// Mutations (SAFE_MUTATE)
+router.post('/nodes/:node/vms/:vmid/start', startVM);
+router.post('/nodes/:node/vms/:vmid/stop', stopVM);
+router.post('/nodes/:node/vms/:vmid/restart', restartVM);
+router.post('/nodes/:node/lxc/:vmid/start', startLXC);
+router.post('/nodes/:node/lxc/:vmid/stop', stopLXC);
+router.post('/nodes/:node/lxc/:vmid/restart', restartLXC);
 
 export default router;

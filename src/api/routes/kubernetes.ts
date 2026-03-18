@@ -1,0 +1,75 @@
+/**
+ * Kubernetes API Routes
+ * Endpoints for direct Kubernetes operations (restart, logs)
+ */
+
+import { Router, Request, Response, NextFunction } from 'express';
+import { KubernetesConnector } from '../../connectors/kubernetes';
+import { logger } from '../../utils/logger';
+
+const router = Router();
+
+function getConnector(req: Request): KubernetesConnector {
+  const connector = req.app.locals.kubernetesConnector as KubernetesConnector | undefined;
+  if (!connector) {
+    throw new Error('Kubernetes connector not available');
+  }
+  return connector;
+}
+
+/**
+ * POST /api/v1/kubernetes/deployments/:namespace/:name/restart
+ * Restart a deployment via rolling restart (SAFE_MUTATE)
+ */
+export async function restartDeployment(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { namespace, name } = req.params;
+    const connector = getConnector(req);
+    const result = await connector.restartDeployment(namespace, name);
+    res.json({ data: result });
+  } catch (error) {
+    logger.error('Failed to restart deployment:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to restart deployment',
+    });
+  }
+}
+
+/**
+ * GET /api/v1/kubernetes/pods/:namespace/:name/logs
+ * Get pod logs
+ * Query: ?lines=100&container=...
+ */
+export async function getPodLogs(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { namespace, name } = req.params;
+    const { lines, container } = req.query;
+    const connector = getConnector(req);
+    const tailLines = typeof lines === 'string' ? parseInt(lines, 10) : 100;
+    const containerName = typeof container === 'string' ? container : undefined;
+    const logs = await connector.getPodLogs(namespace, name, containerName, tailLines);
+    res.json({ data: { logs } });
+  } catch (error) {
+    logger.error('Failed to get pod logs:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get pod logs',
+    });
+  }
+}
+
+// ============================================================================
+// ROUTER SETUP
+// ============================================================================
+
+router.post('/deployments/:namespace/:name/restart', restartDeployment);
+router.get('/pods/:namespace/:name/logs', getPodLogs);
+
+export default router;

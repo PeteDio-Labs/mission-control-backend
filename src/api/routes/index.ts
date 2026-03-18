@@ -9,6 +9,9 @@ import inventoryRouter from './inventory';
 import proxmoxRouter from './proxmox';
 import argoCDRouter from './argocd';
 import eventsRouter from './events';
+import qbittorrentRouter from './qbittorrent';
+import prometheusRouter from './prometheus';
+import kubernetesRouter from './kubernetes';
 
 const routes = Router();
 
@@ -21,6 +24,9 @@ apiV1Router.use('/inventory', inventoryRouter);
 apiV1Router.use('/proxmox', proxmoxRouter);
 apiV1Router.use('/argocd', argoCDRouter);
 apiV1Router.use('/events', eventsRouter);
+apiV1Router.use('/qbittorrent', qbittorrentRouter);
+apiV1Router.use('/prometheus', prometheusRouter);
+apiV1Router.use('/kubernetes', kubernetesRouter);
 
 routes.use('/api/v1', apiV1Router);
 

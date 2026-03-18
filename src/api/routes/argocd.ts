@@ -122,6 +122,50 @@ export async function syncApp(
   }
 }
 
+/**
+ * GET /api/v1/argocd/applications/:name/history
+ * Get deployment history for an application
+ */
+export async function getAppHistory(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { name } = req.params;
+    const connector = getConnector(req);
+    const history = await connector.getAppHistory(name);
+    res.json({ data: history });
+  } catch (error) {
+    logger.error('Failed to get ArgoCD app history:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to get application history',
+    });
+  }
+}
+
+/**
+ * POST /api/v1/argocd/applications/:name/refresh
+ * Force a git re-check for an application
+ */
+export async function refreshApp(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const { name } = req.params;
+    const connector = getConnector(req);
+    const result = await connector.refreshApp(name);
+    res.json({ data: result });
+  } catch (error) {
+    logger.error('Failed to refresh ArgoCD app:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to refresh application',
+    });
+  }
+}
+
 // ============================================================================
 // ROUTER SETUP
 // ============================================================================
@@ -129,6 +173,8 @@ export async function syncApp(
 router.get('/status', getStatus);
 router.get('/applications', getAllAppStatuses);
 router.get('/applications/:name', getAppStatus);
+router.get('/applications/:name/history', getAppHistory);
 router.post('/applications/:name/sync', syncApp);
+router.post('/applications/:name/refresh', refreshApp);
 
 export default router;

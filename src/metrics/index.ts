@@ -75,6 +75,20 @@ export const prometheusRequestDuration = new Histogram({
   registers: [register],
 });
 
+// qBittorrent connector metrics
+export const qbittorrentAvailable = new Gauge({
+  name: 'mission_control_qbittorrent_available',
+  help: '1=qBittorrent API reachable, 0=unavailable',
+  registers: [register],
+});
+
+export const qbittorrentRequestDuration = new Histogram({
+  name: 'mission_control_qbittorrent_request_duration_seconds',
+  help: 'qBittorrent API request duration in seconds',
+  buckets: [0.05, 0.1, 0.5, 1, 2, 5],
+  registers: [register],
+});
+
 // Task execution metrics
 export const taskExecutionsTotal = new Counter({
   name: 'mission_control_task_executions_total',
