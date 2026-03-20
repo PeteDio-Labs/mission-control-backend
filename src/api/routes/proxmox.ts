@@ -5,7 +5,27 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { ProxmoxConnector } from '../../connectors/proxmox';
+import { NotificationClient } from '../../connectors/notification';
 import { logger } from '../../utils/logger';
+
+function publishProxmoxEvent(
+  req: Request,
+  type: 'vm-status' | 'lxc-status',
+  action: string,
+  node: string,
+  vmid: string
+): void {
+  const notificationClient = req.app.locals.notificationClient as NotificationClient | undefined;
+  if (notificationClient) {
+    notificationClient.publishEvent({
+      source: 'proxmox',
+      type,
+      severity: 'info',
+      message: `${type === 'vm-status' ? 'VM' : 'LXC'} ${vmid} on ${node} ${action}`,
+      affected_service: `${node}/${vmid}`,
+    });
+  }
+}
 
 const router = Router();
 
@@ -207,6 +227,7 @@ export async function startVM(
     const { node, vmid } = req.params;
     const connector = getConnector(req);
     const result = await connector.startVM(node, Number(vmid));
+    publishProxmoxEvent(req, 'vm-status', 'started', node, vmid);
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to start VM:', error);
@@ -229,6 +250,7 @@ export async function stopVM(
     const { node, vmid } = req.params;
     const connector = getConnector(req);
     const result = await connector.stopVM(node, Number(vmid));
+    publishProxmoxEvent(req, 'vm-status', 'stopped', node, vmid);
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to stop VM:', error);
@@ -251,6 +273,7 @@ export async function restartVM(
     const { node, vmid } = req.params;
     const connector = getConnector(req);
     const result = await connector.restartVM(node, Number(vmid));
+    publishProxmoxEvent(req, 'vm-status', 'restarted', node, vmid);
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to restart VM:', error);
@@ -273,6 +296,7 @@ export async function startLXC(
     const { node, vmid } = req.params;
     const connector = getConnector(req);
     const result = await connector.startLXC(node, Number(vmid));
+    publishProxmoxEvent(req, 'lxc-status', 'started', node, vmid);
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to start LXC:', error);
@@ -295,6 +319,7 @@ export async function stopLXC(
     const { node, vmid } = req.params;
     const connector = getConnector(req);
     const result = await connector.stopLXC(node, Number(vmid));
+    publishProxmoxEvent(req, 'lxc-status', 'stopped', node, vmid);
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to stop LXC:', error);
@@ -317,6 +342,7 @@ export async function restartLXC(
     const { node, vmid } = req.params;
     const connector = getConnector(req);
     const result = await connector.restartLXC(node, Number(vmid));
+    publishProxmoxEvent(req, 'lxc-status', 'restarted', node, vmid);
     res.json({ data: { success: true, message: result } });
   } catch (error) {
     logger.error('Failed to restart LXC:', error);

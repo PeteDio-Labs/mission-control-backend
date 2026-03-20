@@ -5,6 +5,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { KubernetesConnector } from '../../connectors/kubernetes';
+import { NotificationClient } from '../../connectors/notification';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -30,6 +31,20 @@ export async function restartDeployment(
     const { namespace, name } = req.params;
     const connector = getConnector(req);
     const result = await connector.restartDeployment(namespace, name);
+
+    // Publish event to notification service (fire-and-forget)
+    const notificationClient = req.app.locals.notificationClient as NotificationClient | undefined;
+    if (notificationClient) {
+      notificationClient.publishEvent({
+        source: 'kubernetes',
+        type: 'deployment',
+        severity: 'info',
+        message: `Deployment ${namespace}/${name} restarted`,
+        namespace,
+        affected_service: name,
+      });
+    }
+
     res.json({ data: result });
   } catch (error) {
     logger.error('Failed to restart deployment:', error);

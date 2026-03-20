@@ -157,6 +157,19 @@ export async function refreshApp(
     const { name } = req.params;
     const connector = getConnector(req);
     const result = await connector.refreshApp(name);
+
+    // Publish event to notification service (fire-and-forget)
+    const notificationClient = req.app.locals.notificationClient as NotificationClient | undefined;
+    if (notificationClient) {
+      notificationClient.publishEvent({
+        source: 'argocd',
+        type: 'sync-drift',
+        severity: 'info',
+        message: `ArgoCD refresh triggered for ${name}`,
+        affected_service: name,
+      });
+    }
+
     res.json({ data: result });
   } catch (error) {
     logger.error('Failed to refresh ArgoCD app:', error);
