@@ -90,6 +90,34 @@ export function getClientCount(): number {
   return clients.size;
 }
 
+/**
+ * GET / — Proxy to notification-service for historical events
+ */
+async function listEvents(req: Request, res: Response): Promise<void> {
+  const notifUrl =
+    process.env.NOTIFICATION_SERVICE_URL ||
+    'http://notification-service.mission-control.svc.cluster.local:3002';
+
+  const limit = req.query.limit ?? '50';
+  try {
+    const response = await fetch(`${notifUrl}/api/v1/events?limit=${limit}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      res.status(response.status).json({ error: `Notification service error: ${response.statusText}` });
+      return;
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    logger.error('Failed to proxy events from notification-service', err);
+    res.status(502).json({ error: 'Notification service unavailable' });
+  }
+}
+
+router.get('/', listEvents);
 router.get('/stream', streamEvents);
 router.post('/webhook', receiveWebhook);
 
