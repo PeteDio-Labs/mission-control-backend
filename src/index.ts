@@ -107,24 +107,37 @@ async function startServer() {
         app.locals.notificationClient = notificationClient;
         logger.info('✅ Notification service client initialized');
 
-        // Register as webhook subscriber for SSE relay
+        // Register as webhook subscriber for SSE relay (idempotent)
         try {
           const notifUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3002';
           const backendUrl = `http://mission-control-backend.mission-control.svc.cluster.local:${PORT}`;
-          const subResponse = await fetch(`${notifUrl}/api/v1/subscriptions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              url: `${backendUrl}/api/v1/events/webhook`,
-              name: 'mc-backend-sse',
-              events: ['*'],
-              active: true,
-            }),
-          });
-          const subData = (await subResponse.json()) as Record<string, unknown>;
-          logger.info('✅ Registered as webhook subscriber for SSE relay', {
-            subscriptionId: subData?.id,
-          });
+          const webhookUrl = `${backendUrl}/api/v1/events/webhook`;
+
+          // Check if subscription already exists
+          const existingRes = await fetch(`${notifUrl}/api/v1/subscriptions`);
+          const existingData = (await existingRes.json()) as { subscriptions?: Array<{ id: string; url: string; name: string }> };
+          const existing = existingData.subscriptions?.find((s) => s.name === 'mc-backend-sse' && s.url === webhookUrl);
+
+          if (existing) {
+            logger.info('✅ Webhook subscription already exists for SSE relay', {
+              subscriptionId: existing.id,
+            });
+          } else {
+            const subResponse = await fetch(`${notifUrl}/api/v1/subscriptions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url: webhookUrl,
+                name: 'mc-backend-sse',
+                events: ['*'],
+                active: true,
+              }),
+            });
+            const subData = (await subResponse.json()) as Record<string, unknown>;
+            logger.info('✅ Registered as webhook subscriber for SSE relay', {
+              subscriptionId: subData?.id,
+            });
+          }
         } catch (subError) {
           const msg = subError instanceof Error ? subError.message : 'Unknown error';
           logger.warn('⚠️ Failed to register webhook subscription (SSE relay will not receive events)', { error: msg });
