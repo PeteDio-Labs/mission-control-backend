@@ -3,8 +3,6 @@
  * Connects to ArgoCD API and retrieves application status
  */
 
-import axios, { AxiosInstance } from 'axios';
-import https from 'https';
 import { logger } from '../utils/logger';
 import { argoCdAvailable, argoCdRequestDuration } from '../metrics/index';
 
@@ -93,39 +91,54 @@ export interface ArgoRevision {
 }
 
 export class ArgoCDConnector {
-  private client: AxiosInstance;
   private server: string;
   private token: string;
-  private insecure: boolean;
+  private timeout = 20000;
 
-  constructor(server?: string, token?: string, insecure: boolean = true) {
+  constructor(server?: string, token?: string, _insecure: boolean = true) {
     this.server = server || process.env.ARGOCD_SERVER || 'http://argocd-server.argocd.svc.cluster.local';
     this.token = token || process.env.ARGOCD_AUTH_TOKEN || '';
-    this.insecure = insecure;
 
     // Ensure server has protocol
     if (!this.server.startsWith('http://') && !this.server.startsWith('https://')) {
-      // Default to HTTP for in-cluster connections
       this.server = `http://${this.server}`;
     }
 
-    this.client = axios.create({
-      baseURL: this.server,
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: 20000,
-      httpsAgent: this.insecure && this.server.startsWith('https://')
-        ? new https.Agent({ rejectUnauthorized: false })
-        : undefined,
-    });
-
     logger.info('ArgoCD connector initialized', {
       server: this.server,
-      insecure: this.insecure,
       hasToken: !!this.token,
     });
+  }
+
+  private get headers(): Record<string, string> {
+    return {
+      'Authorization': `Bearer ${this.token}`,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  private async request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+    const url = `${this.server}${path}`;
+    const init: RequestInit = {
+      method,
+      headers: this.headers,
+      signal: AbortSignal.timeout(this.timeout),
+    };
+    if (body !== undefined) {
+      init.body = JSON.stringify(body);
+    }
+    const response = await fetch(url, init);
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      let msg: string;
+      try {
+        msg = (JSON.parse(text) as { message?: string }).message ?? `HTTP ${response.status}`;
+      } catch {
+        msg = `HTTP ${response.status} ${response.statusText}`;
+      }
+      throw new Error(msg);
+    }
+    return response.json() as Promise<T>;
   }
 
   /**
@@ -134,7 +147,7 @@ export class ArgoCDConnector {
   async testConnection(): Promise<boolean> {
     const start = Date.now();
     try {
-      await this.client.get('/api/version');
+      await this.request('/api/version');
       argoCdRequestDuration.observe((Date.now() - start) / 1000);
       argoCdAvailable.set(1);
       logger.info('ArgoCD connection test successful');
@@ -142,14 +155,10 @@ export class ArgoCDConnector {
     } catch (error) {
       argoCdRequestDuration.observe((Date.now() - start) / 1000);
       argoCdAvailable.set(0);
-      let errorMsg = 'Unknown error';
-      if (error && typeof error === 'object' && 'message' in error) {
-        errorMsg = (error as Error).message;
-      }
       logger.error('ArgoCD connection test failed', {
         server: this.server,
-        error: errorMsg,
-        hasToken: !!this.token
+        error: error instanceof Error ? error.message : 'Unknown error',
+        hasToken: !!this.token,
       });
       return false;
     }
@@ -161,10 +170,10 @@ export class ArgoCDConnector {
   async getApplications(): Promise<ArgoApplication[]> {
     const start = Date.now();
     try {
-      const response = await this.client.get('/api/v1/applications');
+      const data = await this.request<{ items?: ArgoApplication[] }>('/api/v1/applications');
       argoCdRequestDuration.observe((Date.now() - start) / 1000);
       argoCdAvailable.set(1);
-      const items = response.data.items || [];
+      const items = data.items ?? [];
       logger.info('Retrieved ArgoCD applications', { count: items.length });
       return items;
     } catch (error) {
@@ -180,8 +189,7 @@ export class ArgoCDConnector {
    */
   async getAppStatus(name: string): Promise<ArgoAppStatus> {
     try {
-      const response = await this.client.get(`/api/v1/applications/${name}`);
-      const app: ArgoApplication = response.data;
+      const app = await this.request<ArgoApplication>(`/api/v1/applications/${encodeURIComponent(name)}`);
 
       const status: ArgoAppStatus = {
         name: app.metadata.name,
@@ -212,35 +220,17 @@ export class ArgoCDConnector {
    */
   async syncApp(name: string, prune: boolean = false, dryRun: boolean = false): Promise<SyncResult> {
     try {
-      const payload = {
-        prune,
-        dryRun,
-        strategy: {
-          hook: {},
-        },
-      };
-
-      await this.client.post(`/api/v1/applications/${name}/sync`, payload);
-
+      const payload = { prune, dryRun, strategy: { hook: {} } };
+      await this.request(`/api/v1/applications/${encodeURIComponent(name)}/sync`, 'POST', payload);
       logger.info('ArgoCD app sync triggered', { name, prune, dryRun });
       return {
         success: true,
         message: `Sync operation ${dryRun ? '(dry-run) ' : ''}initiated for ${name}`,
       };
     } catch (error: unknown) {
-      let errorMsg = 'Unknown error';
-      // Handle axios errors which have a response property
-      if (error && typeof error === 'object' && 'response' in error) {
-        const axiosError = error as { response?: { data?: { message?: string } } };
-        errorMsg = axiosError.response?.data?.message || errorMsg;
-      } else if (error instanceof Error) {
-        errorMsg = error.message;
-      }
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to sync ArgoCD app', { name, error: errorMsg });
-      return {
-        success: false,
-        error: errorMsg,
-      };
+      return { success: false, error: errorMsg };
     }
   }
 
@@ -249,13 +239,9 @@ export class ArgoCDConnector {
    */
   async getAppHistory(name: string): Promise<ArgoRevision[]> {
     try {
-      const response = await this.client.get(`/api/v1/applications/${name}`);
-      const app: ArgoApplication = response.data;
+      const app = await this.request<ArgoApplication>(`/api/v1/applications/${encodeURIComponent(name)}`);
 
-      // ArgoCD doesn't have a dedicated history endpoint in the basic API
-      // We can extract revision info from the current status
       const revisions: ArgoRevision[] = [];
-
       if (app.status?.sync?.revision) {
         revisions.push({
           id: 1,
@@ -278,27 +264,13 @@ export class ArgoCDConnector {
    */
   async refreshApp(name: string): Promise<SyncResult> {
     try {
-      await this.client.get(`/api/v1/applications/${name}?refresh=true`);
-
+      await this.request(`/api/v1/applications/${encodeURIComponent(name)}?refresh=true`);
       logger.info('ArgoCD app refreshed', { name });
-      return {
-        success: true,
-        message: `Application ${name} refreshed`,
-      };
+      return { success: true, message: `Application ${name} refreshed` };
     } catch (error: unknown) {
-      let errorMsg = 'Unknown error';
-      // Handle axios errors which have a response property
-      if (error && typeof error === 'object' && 'response' in error) {
-        const axiosError = error as { response?: { data?: { message?: string } } };
-        errorMsg = axiosError.response?.data?.message || errorMsg;
-      } else if (error instanceof Error) {
-        errorMsg = error.message;
-      }
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       logger.error('Failed to refresh ArgoCD app', { name, error: errorMsg });
-      return {
-        success: false,
-        error: errorMsg,
-      };
+      return { success: false, error: errorMsg };
     }
   }
 

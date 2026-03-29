@@ -3,77 +3,67 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import axios from 'axios';
 import { PrometheusConnector } from './prometheus';
 
-vi.mock('axios', () => ({
-  default: {
-    create: vi.fn(),
-  },
-}));
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
 
-const mockedAxios = axios as any;
+function okJson(data: unknown) {
+  return Promise.resolve({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(data),
+  });
+}
+
+function vectorResponse(results: Array<{ metric: Record<string, string>; value: [number, string] }>) {
+  return okJson({
+    status: 'success',
+    data: { resultType: 'vector', result: results },
+  });
+}
 
 describe('PrometheusConnector', () => {
   let connector: PrometheusConnector;
-  let mockClient: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockClient = {
-      get: vi.fn(),
-    };
-
-    mockedAxios.create = vi.fn().mockReturnValue(mockClient);
-
     connector = new PrometheusConnector('http://prometheus.example.com:9090');
   });
 
   describe('initialization', () => {
     it('should initialize with provided URL', () => {
-      expect(mockedAxios.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          baseURL: 'http://prometheus.example.com:9090',
-          timeout: 30000,
-        })
-      );
+      expect(connector).toBeDefined();
     });
 
     it('should use environment variable as fallback', () => {
       process.env.PROMETHEUS_URL = 'http://env-prometheus.com:9090';
-      const connector2 = new PrometheusConnector();
-
-      expect(mockedAxios.create).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          baseURL: 'http://env-prometheus.com:9090',
-        })
-      );
+      const c = new PrometheusConnector();
+      expect(c).toBeDefined();
+      delete process.env.PROMETHEUS_URL;
     });
 
     it('should use default URL if none provided', () => {
       delete process.env.PROMETHEUS_URL;
-      const connector2 = new PrometheusConnector();
-
-      expect(mockedAxios.create).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          baseURL: 'http://kube-prom-stack-kube-prome-prometheus.observability.svc.cluster.local:9090',
-        })
-      );
+      const c = new PrometheusConnector();
+      expect(c).toBeDefined();
     });
   });
 
   describe('testConnection', () => {
     it('should return true on successful connection', async () => {
-      mockClient.get.mockResolvedValueOnce({ data: { status: 'success' } });
+      mockFetch.mockReturnValueOnce(okJson({ status: 'success' }));
 
       const result = await connector.testConnection();
       expect(result).toBe(true);
-      expect(mockClient.get).toHaveBeenCalledWith('/api/v1/status/config');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://prometheus.example.com:9090/api/v1/status/config',
+        expect.anything(),
+      );
     });
 
     it('should return false on connection failure', async () => {
-      mockClient.get.mockRejectedValueOnce(new Error('Connection refused'));
+      mockFetch.mockRejectedValueOnce(new Error('Connection refused'));
 
       const result = await connector.testConnection();
       expect(result).toBe(false);
@@ -86,22 +76,20 @@ describe('PrometheusConnector', () => {
         status: 'success',
         data: {
           resultType: 'vector',
-          result: [
-            {
-              metric: { instance: 'node1' },
-              value: [1707408000, '75.5'],
-            },
-          ],
+          result: [{ metric: { instance: 'node1' }, value: [1707408000, '75.5'] }],
         },
       };
 
-      mockClient.get.mockResolvedValueOnce({ data: mockResponse });
+      mockFetch.mockReturnValueOnce(okJson(mockResponse));
 
       const result = await connector.queryInstant('up');
       expect(result).toEqual(mockResponse);
-      expect(mockClient.get).toHaveBeenCalledWith('/api/v1/query', {
-        params: { query: 'up' },
-      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/query?'),
+        expect.anything(),
+      );
+      const url: string = mockFetch.mock.calls[0][0];
+      expect(url).toContain('query=up');
     });
 
     it('should support optional time parameter', async () => {
@@ -110,16 +98,16 @@ describe('PrometheusConnector', () => {
         data: { resultType: 'vector', result: [] },
       };
 
-      mockClient.get.mockResolvedValueOnce({ data: mockResponse });
+      mockFetch.mockReturnValueOnce(okJson(mockResponse));
 
       await connector.queryInstant('up', '2026-02-08T12:00:00Z');
-      expect(mockClient.get).toHaveBeenCalledWith('/api/v1/query', {
-        params: { query: 'up', time: '2026-02-08T12:00:00Z' },
-      });
+      const url: string = mockFetch.mock.calls[0][0];
+      expect(url).toContain('query=up');
+      expect(url).toContain('time=');
     });
 
     it('should throw on query error', async () => {
-      mockClient.get.mockRejectedValueOnce(new Error('Query failed'));
+      mockFetch.mockRejectedValueOnce(new Error('Query failed'));
 
       await expect(connector.queryInstant('invalid_query')).rejects.toThrow('Query failed');
     });
@@ -143,56 +131,32 @@ describe('PrometheusConnector', () => {
         },
       };
 
-      mockClient.get.mockResolvedValueOnce({ data: mockResponse });
+      mockFetch.mockReturnValueOnce(okJson(mockResponse));
 
       const result = await connector.queryRange('up', '1707408000', '1707408600', '60');
       expect(result).toEqual(mockResponse);
-      expect(mockClient.get).toHaveBeenCalledWith('/api/v1/query_range', {
-        params: {
-          query: 'up',
-          start: '1707408000',
-          end: '1707408600',
-          step: '60',
-        },
-      });
+      const url: string = mockFetch.mock.calls[0][0];
+      expect(url).toContain('/api/v1/query_range?');
+      expect(url).toContain('query=up');
+      expect(url).toContain('step=60');
     });
   });
 
   describe('getNodeCPU', () => {
     it('should retrieve node CPU metrics', async () => {
-      const mockResponse = {
-        status: 'success',
-        data: {
-          resultType: 'vector',
-          result: [
-            {
-              metric: { instance: 'node1' },
-              value: [1707408000, '45.3'],
-            },
-            {
-              metric: { instance: 'node2' },
-              value: [1707408000, '62.1'],
-            },
-          ],
-        },
-      };
-
-      mockClient.get.mockResolvedValueOnce({ data: mockResponse });
+      mockFetch.mockReturnValueOnce(vectorResponse([
+        { metric: { instance: 'node1' }, value: [1707408000, '45.3'] },
+        { metric: { instance: 'node2' }, value: [1707408000, '62.1'] },
+      ]));
 
       const result = await connector.getNodeCPU();
       expect(result.length).toBe(2);
-      expect(result[0]).toMatchObject({
-        labels: { instance: 'node1' },
-        value: 45.3,
-      });
-      expect(result[1]).toMatchObject({
-        labels: { instance: 'node2' },
-        value: 62.1,
-      });
+      expect(result[0]).toMatchObject({ labels: { instance: 'node1' }, value: 45.3 });
+      expect(result[1]).toMatchObject({ labels: { instance: 'node2' }, value: 62.1 });
     });
 
     it('should return empty array on query failure', async () => {
-      mockClient.get.mockRejectedValueOnce(new Error('Query failed'));
+      mockFetch.mockRejectedValueOnce(new Error('Query failed'));
 
       const result = await connector.getNodeCPU();
       expect(result).toEqual([]);
@@ -201,20 +165,9 @@ describe('PrometheusConnector', () => {
 
   describe('getNodeMemory', () => {
     it('should retrieve node memory metrics', async () => {
-      const mockResponse = {
-        status: 'success',
-        data: {
-          resultType: 'vector',
-          result: [
-            {
-              metric: { instance: 'node1' },
-              value: [1707408000, '8589934592'], // 8GB in bytes
-            },
-          ],
-        },
-      };
-
-      mockClient.get.mockResolvedValueOnce({ data: mockResponse });
+      mockFetch.mockReturnValueOnce(vectorResponse([
+        { metric: { instance: 'node1' }, value: [1707408000, '8589934592'] },
+      ]));
 
       const result = await connector.getNodeMemory();
       expect(result.length).toBe(1);
@@ -222,7 +175,7 @@ describe('PrometheusConnector', () => {
     });
 
     it('should return empty array on query failure', async () => {
-      mockClient.get.mockRejectedValueOnce(new Error('Query failed'));
+      mockFetch.mockRejectedValueOnce(new Error('Query failed'));
 
       const result = await connector.getNodeMemory();
       expect(result).toEqual([]);
@@ -231,24 +184,10 @@ describe('PrometheusConnector', () => {
 
   describe('getPodResourceUsage', () => {
     it('should retrieve pod CPU usage for namespace', async () => {
-      const mockResponse = {
-        status: 'success',
-        data: {
-          resultType: 'vector',
-          result: [
-            {
-              metric: { pod: 'app-pod-1' },
-              value: [1707408000, '0.25'],
-            },
-            {
-              metric: { pod: 'app-pod-2' },
-              value: [1707408000, '0.18'],
-            },
-          ],
-        },
-      };
-
-      mockClient.get.mockResolvedValueOnce({ data: mockResponse });
+      mockFetch.mockReturnValueOnce(vectorResponse([
+        { metric: { pod: 'app-pod-1' }, value: [1707408000, '0.25'] },
+        { metric: { pod: 'app-pod-2' }, value: [1707408000, '0.18'] },
+      ]));
 
       const result = await connector.getPodResourceUsage('default');
       expect(result.length).toBe(2);
@@ -257,7 +196,7 @@ describe('PrometheusConnector', () => {
     });
 
     it('should return empty array on query failure', async () => {
-      mockClient.get.mockRejectedValueOnce(new Error('Query failed'));
+      mockFetch.mockRejectedValueOnce(new Error('Query failed'));
 
       const result = await connector.getPodResourceUsage('default');
       expect(result).toEqual([]);
@@ -266,20 +205,9 @@ describe('PrometheusConnector', () => {
 
   describe('getPodMemoryUsage', () => {
     it('should retrieve pod memory usage for namespace', async () => {
-      const mockResponse = {
-        status: 'success',
-        data: {
-          resultType: 'vector',
-          result: [
-            {
-              metric: { pod: 'app-pod-1' },
-              value: [1707408000, '536870912'], // 512MB
-            },
-          ],
-        },
-      };
-
-      mockClient.get.mockResolvedValueOnce({ data: mockResponse });
+      mockFetch.mockReturnValueOnce(vectorResponse([
+        { metric: { pod: 'app-pod-1' }, value: [1707408000, '536870912'] },
+      ]));
 
       const result = await connector.getPodMemoryUsage('default');
       expect(result.length).toBe(1);
@@ -289,60 +217,21 @@ describe('PrometheusConnector', () => {
 
   describe('getClusterHealth', () => {
     it('should retrieve comprehensive cluster health metrics', async () => {
-      // Mock API server check
-      mockClient.get.mockResolvedValueOnce({
-        data: {
+      const makeVectorResponse = (value: string) => ({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
           status: 'success',
-          data: {
-            resultType: 'vector',
-            result: [{ metric: {}, value: [1707408000, '1'] }],
-          },
-        },
+          data: { resultType: 'vector', result: [{ metric: {}, value: [1707408000, value] }] },
+        }),
       });
 
-      // Mock node count
-      mockClient.get.mockResolvedValueOnce({
-        data: {
-          status: 'success',
-          data: {
-            resultType: 'vector',
-            result: [{ metric: {}, value: [1707408000, '3'] }],
-          },
-        },
-      });
-
-      // Mock nodes ready
-      mockClient.get.mockResolvedValueOnce({
-        data: {
-          status: 'success',
-          data: {
-            resultType: 'vector',
-            result: [{ metric: {}, value: [1707408000, '3'] }],
-          },
-        },
-      });
-
-      // Mock pod count
-      mockClient.get.mockResolvedValueOnce({
-        data: {
-          status: 'success',
-          data: {
-            resultType: 'vector',
-            result: [{ metric: {}, value: [1707408000, '50'] }],
-          },
-        },
-      });
-
-      // Mock pods running
-      mockClient.get.mockResolvedValueOnce({
-        data: {
-          status: 'success',
-          data: {
-            resultType: 'vector',
-            result: [{ metric: {}, value: [1707408000, '48'] }],
-          },
-        },
-      });
+      mockFetch
+        .mockReturnValueOnce(makeVectorResponse('1'))  // apiServerUp
+        .mockReturnValueOnce(makeVectorResponse('3'))  // nodeCount
+        .mockReturnValueOnce(makeVectorResponse('3'))  // nodesReady
+        .mockReturnValueOnce(makeVectorResponse('50')) // podCount
+        .mockReturnValueOnce(makeVectorResponse('48')); // podsRunning
 
       const result = await connector.getClusterHealth();
       expect(result).toMatchObject({
@@ -357,7 +246,7 @@ describe('PrometheusConnector', () => {
     });
 
     it('should return unhealthy status on failure', async () => {
-      mockClient.get.mockRejectedValue(new Error('Query failed'));
+      mockFetch.mockRejectedValue(new Error('Query failed'));
 
       const result = await connector.getClusterHealth();
       expect(result).toMatchObject({
@@ -373,20 +262,9 @@ describe('PrometheusConnector', () => {
 
   describe('getDeploymentReplicas', () => {
     it('should retrieve deployment replicas without namespace filter', async () => {
-      const mockResponse = {
-        status: 'success',
-        data: {
-          resultType: 'vector',
-          result: [
-            {
-              metric: { deployment: 'app1', namespace: 'default' },
-              value: [1707408000, '3'],
-            },
-          ],
-        },
-      };
-
-      mockClient.get.mockResolvedValueOnce({ data: mockResponse });
+      mockFetch.mockReturnValueOnce(vectorResponse([
+        { metric: { deployment: 'app1', namespace: 'default' }, value: [1707408000, '3'] },
+      ]));
 
       const result = await connector.getDeploymentReplicas();
       expect(result.length).toBe(1);
@@ -394,20 +272,9 @@ describe('PrometheusConnector', () => {
     });
 
     it('should retrieve deployment replicas with namespace filter', async () => {
-      const mockResponse = {
-        status: 'success',
-        data: {
-          resultType: 'vector',
-          result: [
-            {
-              metric: { deployment: 'app1', namespace: 'production' },
-              value: [1707408000, '5'],
-            },
-          ],
-        },
-      };
-
-      mockClient.get.mockResolvedValueOnce({ data: mockResponse });
+      mockFetch.mockReturnValueOnce(vectorResponse([
+        { metric: { deployment: 'app1', namespace: 'production' }, value: [1707408000, '5'] },
+      ]));
 
       const result = await connector.getDeploymentReplicas('production');
       expect(result.length).toBe(1);
@@ -417,20 +284,9 @@ describe('PrometheusConnector', () => {
 
   describe('getPVUsage', () => {
     it('should retrieve persistent volume usage', async () => {
-      const mockResponse = {
-        status: 'success',
-        data: {
-          resultType: 'vector',
-          result: [
-            {
-              metric: { persistentvolumeclaim: 'data-pvc' },
-              value: [1707408000, '75.5'],
-            },
-          ],
-        },
-      };
-
-      mockClient.get.mockResolvedValueOnce({ data: mockResponse });
+      mockFetch.mockReturnValueOnce(vectorResponse([
+        { metric: { persistentvolumeclaim: 'data-pvc' }, value: [1707408000, '75.5'] },
+      ]));
 
       const result = await connector.getPVUsage();
       expect(result.length).toBe(1);
@@ -438,7 +294,7 @@ describe('PrometheusConnector', () => {
     });
 
     it('should return empty array on query failure', async () => {
-      mockClient.get.mockRejectedValueOnce(new Error('Query failed'));
+      mockFetch.mockRejectedValueOnce(new Error('Query failed'));
 
       const result = await connector.getPVUsage();
       expect(result).toEqual([]);

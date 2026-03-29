@@ -4,47 +4,21 @@
  * to Discord webhooks and webhook subscribers.
  */
 
-import axios, { AxiosInstance } from 'axios';
+import type { InfraEventInput } from '@petedio/shared';
 import { logger } from '../utils/logger';
 import { notificationPublishTotal, notificationPublishDuration } from '../metrics';
 
-// Event types matching notification-service's InfraEventSchema
-export type EventSource = 'kubernetes' | 'proxmox' | 'argocd';
-export type EventType =
-  | 'deployment'
-  | 'pod-failure'
-  | 'vm-status'
-  | 'lxc-status'
-  | 'sync-drift'
-  | 'node-status'
-  | 'rollout';
-export type EventSeverity = 'info' | 'warning' | 'critical';
-
-export interface InfraEventInput {
-  source: EventSource;
-  type: EventType;
-  severity: EventSeverity;
-  message: string;
-  namespace?: string;
-  affected_service?: string;
-  metadata?: Record<string, unknown>;
-}
+export type { InfraEventInput };
 
 export class NotificationClient {
-  private client: AxiosInstance;
   private baseUrl: string;
+  private timeout = 5000;
 
   constructor(baseUrl?: string) {
     this.baseUrl =
       baseUrl ||
       process.env.NOTIFICATION_SERVICE_URL ||
       'http://notification-service:3002';
-
-    this.client = axios.create({
-      baseURL: this.baseUrl,
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 5000,
-    });
 
     logger.info('Notification client initialized', { baseUrl: this.baseUrl });
   }
@@ -56,7 +30,15 @@ export class NotificationClient {
   async publishEvent(event: InfraEventInput): Promise<void> {
     const end = notificationPublishDuration.startTimer();
     try {
-      await this.client.post('/api/v1/events', event);
+      const response = await fetch(`${this.baseUrl}/api/v1/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event),
+        signal: AbortSignal.timeout(this.timeout),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      }
       notificationPublishTotal.inc({ status: 'success' });
       logger.debug('Event published to notification service', {
         source: event.source,
@@ -65,8 +47,7 @@ export class NotificationClient {
       });
     } catch (error) {
       notificationPublishTotal.inc({ status: 'error' });
-      const msg =
-        error instanceof Error ? error.message : 'Unknown error';
+      const msg = error instanceof Error ? error.message : 'Unknown error';
       logger.warn('Failed to publish event to notification service', {
         error: msg,
         source: event.source,
@@ -82,8 +63,10 @@ export class NotificationClient {
    */
   async testConnection(): Promise<boolean> {
     try {
-      await this.client.get('/health');
-      return true;
+      const response = await fetch(`${this.baseUrl}/health`, {
+        signal: AbortSignal.timeout(this.timeout),
+      });
+      return response.ok;
     } catch {
       return false;
     }

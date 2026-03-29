@@ -3,8 +3,6 @@
  * Connects to Proxmox API and discovers inventory
  */
 
-import axios, { AxiosInstance } from 'axios';
-import https from 'https';
 import crypto from 'crypto';
 import type { Host, HostStatus, Workload, WorkloadStatus } from '../db/types';
 import { logger } from '../utils/logger';
@@ -119,7 +117,7 @@ export interface ProxmoxConnectorOptions {
 }
 
 export class ProxmoxConnector {
-  private client: AxiosInstance | null = null;
+  private initialized = false;
   private baseUrl: string;
   private tokenId: string;
   private tokenSecret: string;
@@ -138,22 +136,12 @@ export class ProxmoxConnector {
   }
 
   async initialize(): Promise<boolean> {
-    if (!this.baseUrl) {
-      throw new Error('PROXMOX_HOST is required');
-    }
+    if (!this.baseUrl) throw new Error('PROXMOX_HOST is required');
     if (!this.tokenId || !this.tokenSecret) {
       throw new Error('PROXMOX_TOKEN_ID and PROXMOX_TOKEN_SECRET are required');
     }
 
-    this.client = axios.create({
-      baseURL: this.baseUrl,
-      timeout: this.connectionTimeout,
-      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-      headers: {
-        Authorization: `PVEAPIToken=${this.tokenId}=${this.tokenSecret}`,
-        Accept: 'application/json',
-      },
-    });
+    this.initialized = true;
 
     logger.info('Initialized Proxmox connector', {
       baseUrl: this.baseUrl,
@@ -166,8 +154,8 @@ export class ProxmoxConnector {
   async testConnection(): Promise<boolean> {
     const start = Date.now();
     try {
-      const client = this.ensureClient();
-      await client.get('/api2/json/version');
+      this.ensureInitialized();
+      await this.request('/api2/json/version');
       proxmoxRequestDuration.observe((Date.now() - start) / 1000);
       proxmoxAvailable.set(1);
       logger.info('Proxmox connection test successful');
@@ -186,23 +174,22 @@ export class ProxmoxConnector {
 
   /**
    * Get all cluster resources in a single call
-   * Uses /cluster/resources — more efficient than per-node iteration
    */
   async getClusterResources(type?: 'node' | 'vm' | 'storage'): Promise<ProxmoxClusterResource[]> {
-    const client = this.ensureClient();
-    const params = type ? { type } : {};
-    const response = await client.get('/api2/json/cluster/resources', { params });
-    return (response.data?.data ?? []) as ProxmoxClusterResource[];
+    this.ensureInitialized();
+    const params = type ? `?type=${encodeURIComponent(type)}` : '';
+    const data = await this.request<{ data: ProxmoxClusterResource[] }>(`/api2/json/cluster/resources${params}`);
+    return data.data ?? [];
   }
 
   async getNodes(): Promise<ProxmoxNode[]> {
-    const client = this.ensureClient();
+    this.ensureInitialized();
     const start = Date.now();
     try {
-      const response = await client.get('/api2/json/nodes');
+      const data = await this.request<{ data: ProxmoxNode[] }>('/api2/json/nodes');
       proxmoxRequestDuration.observe((Date.now() - start) / 1000);
       proxmoxAvailable.set(1);
-      return (response.data?.data ?? []) as ProxmoxNode[];
+      return data.data ?? [];
     } catch (error) {
       proxmoxRequestDuration.observe((Date.now() - start) / 1000);
       proxmoxAvailable.set(0);
@@ -211,22 +198,22 @@ export class ProxmoxConnector {
   }
 
   async getVMs(node: string): Promise<ProxmoxVM[]> {
-    const client = this.ensureClient();
-    const response = await client.get(`/api2/json/nodes/${node}/qemu`);
-    return (response.data?.data ?? []) as ProxmoxVM[];
+    this.ensureInitialized();
+    const data = await this.request<{ data: ProxmoxVM[] }>(`/api2/json/nodes/${node}/qemu`);
+    return data.data ?? [];
   }
 
   async getLXCs(node: string): Promise<ProxmoxLXC[]> {
-    const client = this.ensureClient();
-    const response = await client.get(`/api2/json/nodes/${node}/lxc`);
-    return (response.data?.data ?? []) as ProxmoxLXC[];
+    this.ensureInitialized();
+    const data = await this.request<{ data: ProxmoxLXC[] }>(`/api2/json/nodes/${node}/lxc`);
+    return data.data ?? [];
   }
 
   async getLXCConfig(node: string, vmid: number): Promise<ProxmoxLXCConfig | null> {
     try {
-      const client = this.ensureClient();
-      const response = await client.get(`/api2/json/nodes/${node}/lxc/${vmid}/config`);
-      return (response.data?.data ?? null) as ProxmoxLXCConfig | null;
+      this.ensureInitialized();
+      const data = await this.request<{ data: ProxmoxLXCConfig }>(`/api2/json/nodes/${node}/lxc/${vmid}/config`);
+      return data.data ?? null;
     } catch (error) {
       logger.warn(`Failed to fetch LXC config for ${vmid} on ${node}`, { error });
       return null;
@@ -234,44 +221,44 @@ export class ProxmoxConnector {
   }
 
   async getNodeStatus(node: string): Promise<ProxmoxNodeStatus> {
-    const client = this.ensureClient();
-    const response = await client.get(`/api2/json/nodes/${node}/status`);
-    return (response.data?.data ?? {}) as ProxmoxNodeStatus;
+    this.ensureInitialized();
+    const data = await this.request<{ data: ProxmoxNodeStatus }>(`/api2/json/nodes/${node}/status`);
+    return data.data ?? {};
   }
 
   async startVM(node: string, vmid: number): Promise<string> {
-    const client = this.ensureClient();
-    await client.post(`/api2/json/nodes/${node}/qemu/${vmid}/status/start`);
+    this.ensureInitialized();
+    await this.request(`/api2/json/nodes/${node}/qemu/${vmid}/status/start`, 'POST');
     return `Start request sent for VM ${vmid} on ${node}`;
   }
 
   async stopVM(node: string, vmid: number): Promise<string> {
-    const client = this.ensureClient();
-    await client.post(`/api2/json/nodes/${node}/qemu/${vmid}/status/stop`);
+    this.ensureInitialized();
+    await this.request(`/api2/json/nodes/${node}/qemu/${vmid}/status/stop`, 'POST');
     return `Stop request sent for VM ${vmid} on ${node}`;
   }
 
   async restartLXC(node: string, vmid: number): Promise<string> {
-    const client = this.ensureClient();
-    await client.post(`/api2/json/nodes/${node}/lxc/${vmid}/status/restart`);
+    this.ensureInitialized();
+    await this.request(`/api2/json/nodes/${node}/lxc/${vmid}/status/restart`, 'POST');
     return `Restart request sent for LXC ${vmid} on ${node}`;
   }
 
   async startLXC(node: string, vmid: number): Promise<string> {
-    const client = this.ensureClient();
-    await client.post(`/api2/json/nodes/${node}/lxc/${vmid}/status/start`);
+    this.ensureInitialized();
+    await this.request(`/api2/json/nodes/${node}/lxc/${vmid}/status/start`, 'POST');
     return `Start request sent for LXC ${vmid} on ${node}`;
   }
 
   async stopLXC(node: string, vmid: number): Promise<string> {
-    const client = this.ensureClient();
-    await client.post(`/api2/json/nodes/${node}/lxc/${vmid}/status/stop`);
+    this.ensureInitialized();
+    await this.request(`/api2/json/nodes/${node}/lxc/${vmid}/status/stop`, 'POST');
     return `Stop request sent for LXC ${vmid} on ${node}`;
   }
 
   async restartVM(node: string, vmid: number): Promise<string> {
-    const client = this.ensureClient();
-    await client.post(`/api2/json/nodes/${node}/qemu/${vmid}/status/reboot`);
+    this.ensureInitialized();
+    await this.request(`/api2/json/nodes/${node}/qemu/${vmid}/status/reboot`, 'POST');
     return `Restart request sent for VM ${vmid} on ${node}`;
   }
 
@@ -318,8 +305,35 @@ export class ProxmoxConnector {
   }
 
   // ============================================================================
-  // CONVERSION HELPERS
+  // PRIVATE HELPERS
   // ============================================================================
+
+  private async request<T = unknown>(path: string, method = 'GET'): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const response = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `PVEAPIToken=${this.tokenId}=${this.tokenSecret}`,
+        Accept: 'application/json',
+        ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
+      },
+      signal: AbortSignal.timeout(this.connectionTimeout),
+      // @ts-expect-error — Bun-specific fetch option to skip TLS verification for self-signed Proxmox certs
+      tls: { rejectUnauthorized: false },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Proxmox API error: HTTP ${response.status} ${response.statusText}`);
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  private ensureInitialized(): void {
+    if (!this.initialized) {
+      throw new Error('Proxmox connector not initialized');
+    }
+  }
 
   private convertNodeToHost(node: ProxmoxNode): Host {
     const now = new Date();
@@ -368,9 +382,7 @@ export class ProxmoxConnector {
       },
       health_status: vm.status === 'running' ? 'healthy' : 'unknown',
       last_updated_at: now,
-      metadata: {
-        node,
-      },
+      metadata: { node },
       created_at: now,
       updated_at: now,
     };
@@ -385,7 +397,6 @@ export class ProxmoxConnector {
     const now = new Date();
     const addresses = this.parseNetworkAddresses(config ?? null);
 
-    // Convert NetworkAddresses to JsonObject by filtering out undefined values
     const addressesJson: { [key: string]: string } = {};
     for (const [key, value] of Object.entries(addresses)) {
       if (value !== undefined) {
@@ -414,9 +425,7 @@ export class ProxmoxConnector {
       },
       health_status: lxc.status === 'running' ? 'healthy' : 'unknown',
       last_updated_at: now,
-      metadata: {
-        node,
-      },
+      metadata: { node },
       created_at: now,
       updated_at: now,
     };
@@ -424,42 +433,27 @@ export class ProxmoxConnector {
 
   private parseNetworkAddresses(config: ProxmoxLXCConfig | null): NetworkAddresses {
     const addresses: NetworkAddresses = {};
+    if (!config) return addresses;
 
-    if (!config) {
-      return addresses;
-    }
-
-    // Find all network interfaces (net0, net1, net2, ...)
     const netKeys = Object.keys(config)
       .filter(key => /^net\d+$/.test(key))
       .sort();
 
     for (const netKey of netKeys) {
       const netConfig = config[netKey];
-      if (typeof netConfig !== 'string') {
-        continue;
-      }
+      if (typeof netConfig !== 'string') continue;
 
-      // Parse "name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.1"
       const parts = netConfig.split(',');
       const configMap: Record<string, string> = {};
-
       for (const part of parts) {
         const [key, value] = part.split('=');
-        if (key && value) {
-          configMap[key.trim()] = value.trim();
-        }
+        if (key && value) configMap[key.trim()] = value.trim();
       }
 
       const ip = configMap['ip'];
-      if (!ip || ip.toLowerCase() === 'dhcp') {
-        continue;
-      }
+      if (!ip || ip.toLowerCase() === 'dhcp') continue;
 
-      // Strip CIDR notation (192.168.1.100/24 -> 192.168.1.100)
       const cleanIp = ip.split('/')[0];
-
-      // First interface (net0) -> lan, others keep interface name
       if (netKey === 'net0') {
         addresses.lan = cleanIp;
       } else {
@@ -471,41 +465,19 @@ export class ProxmoxConnector {
   }
 
   private mapNodeStatus(status?: string): HostStatus {
-    if (!status) {
-      return 'unknown';
-    }
-    if (status === 'online') {
-      return 'online';
-    }
-    if (status === 'offline') {
-      return 'offline';
-    }
+    if (status === 'online') return 'online';
+    if (status === 'offline') return 'offline';
     return 'unknown';
   }
 
   private mapWorkloadStatus(status?: string): WorkloadStatus {
-    if (!status) {
-      return 'unknown';
-    }
-
     switch (status) {
-      case 'running':
-        return 'running';
+      case 'running': return 'running';
       case 'stopped':
-        return 'stopped';
       case 'paused':
-      case 'suspended':
-        return 'stopped';
-      default:
-        return 'unknown';
+      case 'suspended': return 'stopped';
+      default: return 'unknown';
     }
-  }
-
-  private ensureClient(): AxiosInstance {
-    if (!this.client) {
-      throw new Error('Proxmox connector not initialized');
-    }
-    return this.client;
   }
 
   private getHostId(nodeName: string): string {
@@ -519,19 +491,15 @@ export class ProxmoxConnector {
   private getDeterministicId(seed: string): string {
     const hash = crypto.createHash('sha1').update(seed).digest();
     const bytes = Buffer.from(hash.subarray(0, 16));
-
     bytes[6] = (bytes[6] & 0x0f) | 0x50;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
-
     const hex = bytes.toString('hex');
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   }
 
   private deriveClusterName(baseUrl: string): string {
     try {
-      if (!baseUrl) {
-        return 'proxmox';
-      }
+      if (!baseUrl) return 'proxmox';
       return new URL(baseUrl).hostname || 'proxmox';
     } catch {
       return 'proxmox';

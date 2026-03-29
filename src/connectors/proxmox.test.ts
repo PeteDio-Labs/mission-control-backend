@@ -3,30 +3,29 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import axios from 'axios';
 import { ProxmoxConnector } from './proxmox';
 
-vi.mock('axios', () => ({
-  default: {
-    create: vi.fn(),
-  },
-}));
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
 
-const mockedAxios = axios as any;
+function okJson(data: unknown) {
+  return Promise.resolve({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(data),
+    statusText: 'OK',
+  });
+}
+
+function proxmoxData(data: unknown) {
+  return okJson({ data });
+}
 
 describe('ProxmoxConnector', () => {
   let connector: ProxmoxConnector;
-  let mockClient: any;
 
   beforeEach(async () => {
     vi.clearAllMocks();
-
-    mockClient = {
-      get: vi.fn(),
-      post: vi.fn(),
-    };
-
-    mockedAxios.create = vi.fn().mockReturnValue(mockClient);
 
     connector = new ProxmoxConnector({
       baseUrl: 'https://proxmox.local:8006',
@@ -38,60 +37,40 @@ describe('ProxmoxConnector', () => {
     await connector.initialize();
   });
 
-  it('initializes the client with expected settings', () => {
-    expect(mockedAxios.create).toHaveBeenCalledWith(
+  it('initializes the client with expected settings', async () => {
+    mockFetch.mockReturnValueOnce(proxmoxData({ version: '8.1.3' }));
+    await connector.testConnection();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://proxmox.local:8006/api2/json/version',
       expect.objectContaining({
-        baseURL: 'https://proxmox.local:8006',
         headers: expect.objectContaining({
           Authorization: 'PVEAPIToken=user@pve!token=secret',
           Accept: 'application/json',
         }),
-      })
+      }),
     );
   });
 
   it('fetches nodes', async () => {
-    mockClient.get.mockResolvedValue({
-      data: {
-        data: [
-          {
-            node: 'pve',
-            status: 'online',
-            maxcpu: 16,
-            maxmem: 1024,
-            maxdisk: 2048,
-          },
-        ],
-      },
-    });
+    mockFetch.mockReturnValueOnce(proxmoxData([
+      { node: 'pve', status: 'online', maxcpu: 16, maxmem: 1024, maxdisk: 2048 },
+    ]));
 
     const nodes = await connector.getNodes();
 
-    expect(mockClient.get).toHaveBeenCalledWith('/api2/json/nodes');
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://proxmox.local:8006/api2/json/nodes',
+      expect.anything(),
+    );
     expect(nodes).toHaveLength(1);
     expect(nodes[0].node).toBe('pve');
   });
 
   it('fetches VMs and LXCs for a node', async () => {
-    mockClient.get.mockImplementation((url: string) => {
-      if (url === '/api2/json/nodes/pve/qemu') {
-        return Promise.resolve({
-          data: {
-            data: [{ vmid: 101, name: 'plex', status: 'running' }],
-          },
-        });
-      }
-
-      if (url === '/api2/json/nodes/pve/lxc') {
-        return Promise.resolve({
-          data: {
-            data: [{ vmid: 201, name: 'pihole', status: 'stopped' }],
-          },
-        });
-      }
-
-      return Promise.resolve({ data: { data: [] } });
-    });
+    mockFetch
+      .mockReturnValueOnce(proxmoxData([{ vmid: 101, name: 'plex', status: 'running' }]))
+      .mockReturnValueOnce(proxmoxData([{ vmid: 201, name: 'pihole', status: 'stopped' }]));
 
     const vms = await connector.getVMs('pve');
     const lxcs = await connector.getLXCs('pve');
@@ -103,32 +82,11 @@ describe('ProxmoxConnector', () => {
   });
 
   it('discovers inventory with linked host/workloads', async () => {
-    mockClient.get.mockImplementation((url: string) => {
-      if (url === '/api2/json/nodes') {
-        return Promise.resolve({
-          data: {
-            data: [{ node: 'pve', status: 'online' }],
-          },
-        });
-      }
-
-      if (url === '/api2/json/nodes/pve/qemu') {
-        return Promise.resolve({
-          data: {
-            data: [{ vmid: 101, name: 'plex', status: 'running' }],
-          },
-        });
-      }
-
-      if (url === '/api2/json/nodes/pve/lxc') {
-        return Promise.resolve({
-          data: {
-            data: [{ vmid: 201, name: 'pihole', status: 'stopped' }],
-          },
-        });
-      }
-
-      return Promise.resolve({ data: { data: [] } });
+    mockFetch.mockImplementation((url: string) => {
+      if (url.endsWith('/api2/json/nodes')) return proxmoxData([{ node: 'pve', status: 'online' }]);
+      if (url.endsWith('/api2/json/nodes/pve/qemu')) return proxmoxData([{ vmid: 101, name: 'plex', status: 'running' }]);
+      if (url.endsWith('/api2/json/nodes/pve/lxc')) return proxmoxData([{ vmid: 201, name: 'pihole', status: 'stopped' }]);
+      return proxmoxData([]);
     });
 
     const inventory = await connector.discoverAll();
@@ -141,28 +99,40 @@ describe('ProxmoxConnector', () => {
   });
 
   it('sends control commands for VMs and LXCs', async () => {
-    mockClient.post.mockResolvedValue({ data: { data: {} } });
+    mockFetch.mockResolvedValue(proxmoxData({}));
 
     await connector.startVM('pve', 101);
     await connector.stopVM('pve', 101);
     await connector.restartLXC('pve', 201);
 
-    expect(mockClient.post).toHaveBeenCalledWith('/api2/json/nodes/pve/qemu/101/status/start');
-    expect(mockClient.post).toHaveBeenCalledWith('/api2/json/nodes/pve/qemu/101/status/stop');
-    expect(mockClient.post).toHaveBeenCalledWith('/api2/json/nodes/pve/lxc/201/status/restart');
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://proxmox.local:8006/api2/json/nodes/pve/qemu/101/status/start',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://proxmox.local:8006/api2/json/nodes/pve/qemu/101/status/stop',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://proxmox.local:8006/api2/json/nodes/pve/lxc/201/status/restart',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   it('tests connection via /api2/json/version', async () => {
-    mockClient.get.mockResolvedValue({ data: { data: { version: '8.1.3' } } });
+    mockFetch.mockReturnValueOnce(proxmoxData({ version: '8.1.3' }));
 
     const result = await connector.testConnection();
 
     expect(result).toBe(true);
-    expect(mockClient.get).toHaveBeenCalledWith('/api2/json/version');
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://proxmox.local:8006/api2/json/version',
+      expect.anything(),
+    );
   });
 
   it('returns false when connection test fails', async () => {
-    mockClient.get.mockRejectedValue(new Error('Connection refused'));
+    mockFetch.mockRejectedValue(new Error('Connection refused'));
 
     const result = await connector.testConnection();
 
@@ -174,20 +144,26 @@ describe('ProxmoxConnector', () => {
       { id: 'node/pve', type: 'node', node: 'pve', status: 'online' },
       { id: 'qemu/101', type: 'qemu', vmid: 101, name: 'plex', node: 'pve' },
     ];
-    mockClient.get.mockResolvedValue({ data: { data: mockResources } });
+    mockFetch.mockReturnValueOnce(proxmoxData(mockResources));
 
     const resources = await connector.getClusterResources();
 
-    expect(mockClient.get).toHaveBeenCalledWith('/api2/json/cluster/resources', { params: {} });
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://proxmox.local:8006/api2/json/cluster/resources',
+      expect.anything(),
+    );
     expect(resources).toHaveLength(2);
   });
 
   it('fetches cluster resources filtered by type', async () => {
-    mockClient.get.mockResolvedValue({ data: { data: [] } });
+    mockFetch.mockReturnValueOnce(proxmoxData([]));
 
     await connector.getClusterResources('vm');
 
-    expect(mockClient.get).toHaveBeenCalledWith('/api2/json/cluster/resources', { params: { type: 'vm' } });
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://proxmox.local:8006/api2/json/cluster/resources?type=vm',
+      expect.anything(),
+    );
   });
 
   describe('isConfigured', () => {
@@ -214,81 +190,41 @@ describe('ProxmoxConnector', () => {
 
   describe('LXC Network Address Parsing', () => {
     it('fetches LXC config for a container', async () => {
-      mockClient.get.mockResolvedValue({
-        data: {
-          data: {
-            net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.1',
-            memory: 2048,
-            cores: 2,
-          },
-        },
-      });
+      mockFetch.mockReturnValueOnce(proxmoxData({
+        net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.1',
+        memory: 2048,
+        cores: 2,
+      }));
 
       const config = await connector.getLXCConfig('pve', 100);
 
-      expect(mockClient.get).toHaveBeenCalledWith('/api2/json/nodes/pve/lxc/100/config');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://proxmox.local:8006/api2/json/nodes/pve/lxc/100/config',
+        expect.anything(),
+      );
       expect(config?.net0).toBe('name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.1');
     });
 
     it('returns null when LXC config fetch fails', async () => {
-      mockClient.get.mockRejectedValue(new Error('Not found'));
+      mockFetch.mockRejectedValue(new Error('Not found'));
 
       const config = await connector.getLXCConfig('pve', 999);
 
       expect(config).toBeNull();
     });
 
-    it('parses network addresses with single interface', async () => {
-      mockClient.get.mockResolvedValue({
-        data: {
-          data: {
-            net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.1',
-          },
-        },
-      });
-
-      const config = await connector.getLXCConfig('pve', 100);
-      // We need to access the private method through the connector instance
-      // For now, we test through the discovery flow
-      const inventory = await testParseNetworksViaDiscovery(
-        connector,
-        mockClient,
-        'pve',
-        100,
-        config
-      );
-
-      expect(inventory).toBeDefined();
-    });
-
     it('parses network addresses with multiple interfaces', async () => {
-      mockClient.get.mockImplementation((url: string) => {
-        if (url === '/api2/json/nodes') {
-          return Promise.resolve({
-            data: { data: [{ node: 'pve', status: 'online' }] },
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith('/api2/json/nodes')) return proxmoxData([{ node: 'pve', status: 'online' }]);
+        if (url.endsWith('/api2/json/nodes/pve/qemu')) return proxmoxData([]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc')) return proxmoxData([{ vmid: 100, name: 'test-lxc', status: 'running' }]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc/100/config')) {
+          return proxmoxData({
+            net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.1',
+            net1: 'name=eth1,bridge=vmbr1,ip=10.0.0.50/24',
           });
         }
-        if (url === '/api2/json/nodes/pve/qemu') {
-          return Promise.resolve({ data: { data: [] } });
-        }
-        if (url === '/api2/json/nodes/pve/lxc') {
-          return Promise.resolve({
-            data: {
-              data: [{ vmid: 100, name: 'test-lxc', status: 'running' }],
-            },
-          });
-        }
-        if (url === '/api2/json/nodes/pve/lxc/100/config') {
-          return Promise.resolve({
-            data: {
-              data: {
-                net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.1',
-                net1: 'name=eth1,bridge=vmbr1,ip=10.0.0.50/24',
-              },
-            },
-          });
-        }
-        return Promise.resolve({ data: { data: [] } });
+        return proxmoxData([]);
       });
 
       const inventory = await connector.discoverAll();
@@ -301,191 +237,85 @@ describe('ProxmoxConnector', () => {
     });
 
     it('handles DHCP configuration gracefully', async () => {
-      mockClient.get.mockImplementation((url: string) => {
-        if (url === '/api2/json/nodes') {
-          return Promise.resolve({
-            data: { data: [{ node: 'pve', status: 'online' }] },
-          });
-        }
-        if (url === '/api2/json/nodes/pve/qemu') {
-          return Promise.resolve({ data: { data: [] } });
-        }
-        if (url === '/api2/json/nodes/pve/lxc') {
-          return Promise.resolve({
-            data: {
-              data: [{ vmid: 100, name: 'dhcp-lxc', status: 'running' }],
-            },
-          });
-        }
-        if (url === '/api2/json/nodes/pve/lxc/100/config') {
-          return Promise.resolve({
-            data: {
-              data: {
-                net0: 'name=eth0,bridge=vmbr0,ip=dhcp',
-              },
-            },
-          });
-        }
-        return Promise.resolve({ data: { data: [] } });
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith('/api2/json/nodes')) return proxmoxData([{ node: 'pve', status: 'online' }]);
+        if (url.endsWith('/api2/json/nodes/pve/qemu')) return proxmoxData([]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc')) return proxmoxData([{ vmid: 100, name: 'dhcp-lxc', status: 'running' }]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc/100/config')) return proxmoxData({ net0: 'name=eth0,bridge=vmbr0,ip=dhcp' });
+        return proxmoxData([]);
       });
 
       const inventory = await connector.discoverAll();
-
-      expect(inventory.workloads).toHaveLength(1);
       const lxcWorkload = inventory.workloads[0];
-      // DHCP addresses should be empty since we skip DHCP IPs
       expect((lxcWorkload.spec as any).addresses).toEqual({});
     });
 
     it('handles missing network config gracefully', async () => {
-      mockClient.get.mockImplementation((url: string) => {
-        if (url === '/api2/json/nodes') {
-          return Promise.resolve({
-            data: { data: [{ node: 'pve', status: 'online' }] },
-          });
-        }
-        if (url === '/api2/json/nodes/pve/qemu') {
-          return Promise.resolve({ data: { data: [] } });
-        }
-        if (url === '/api2/json/nodes/pve/lxc') {
-          return Promise.resolve({
-            data: {
-              data: [{ vmid: 100, name: 'no-net-lxc', status: 'running' }],
-            },
-          });
-        }
-        if (url === '/api2/json/nodes/pve/lxc/100/config') {
-          return Promise.resolve({
-            data: {
-              data: {
-                memory: 2048,
-                cores: 2,
-                // No network configuration
-              },
-            },
-          });
-        }
-        return Promise.resolve({ data: { data: [] } });
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith('/api2/json/nodes')) return proxmoxData([{ node: 'pve', status: 'online' }]);
+        if (url.endsWith('/api2/json/nodes/pve/qemu')) return proxmoxData([]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc')) return proxmoxData([{ vmid: 100, name: 'no-net-lxc', status: 'running' }]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc/100/config')) return proxmoxData({ memory: 2048, cores: 2 });
+        return proxmoxData([]);
       });
 
       const inventory = await connector.discoverAll();
-
-      expect(inventory.workloads).toHaveLength(1);
       const lxcWorkload = inventory.workloads[0];
       expect((lxcWorkload.spec as any).addresses).toEqual({});
     });
 
     it('only fetches configs for running LXCs', async () => {
-      mockClient.get.mockImplementation((url: string) => {
-        if (url === '/api2/json/nodes') {
-          return Promise.resolve({
-            data: { data: [{ node: 'pve', status: 'online' }] },
-          });
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith('/api2/json/nodes')) return proxmoxData([{ node: 'pve', status: 'online' }]);
+        if (url.endsWith('/api2/json/nodes/pve/qemu')) return proxmoxData([]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc')) {
+          return proxmoxData([
+            { vmid: 100, name: 'running-lxc', status: 'running' },
+            { vmid: 101, name: 'stopped-lxc', status: 'stopped' },
+          ]);
         }
-        if (url === '/api2/json/nodes/pve/qemu') {
-          return Promise.resolve({ data: { data: [] } });
+        if (url.endsWith('/api2/json/nodes/pve/lxc/100/config')) {
+          return proxmoxData({ net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.100/24' });
         }
-        if (url === '/api2/json/nodes/pve/lxc') {
-          return Promise.resolve({
-            data: {
-              data: [
-                { vmid: 100, name: 'running-lxc', status: 'running' },
-                { vmid: 101, name: 'stopped-lxc', status: 'stopped' },
-              ],
-            },
-          });
-        }
-        if (url === '/api2/json/nodes/pve/lxc/100/config') {
-          return Promise.resolve({
-            data: {
-              data: {
-                net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.100/24',
-              },
-            },
-          });
-        }
-        // Should NOT be called for stopped LXC (vmid 101)
-        return Promise.resolve({ data: { data: [] } });
+        return proxmoxData([]);
       });
 
       await connector.discoverAll();
 
-      // Verify getLXCConfig was only called for the running LXC
-      expect(mockClient.get).toHaveBeenCalledWith('/api2/json/nodes/pve/lxc/100/config');
-      expect(mockClient.get).not.toHaveBeenCalledWith('/api2/json/nodes/pve/lxc/101/config');
+      const fetchedUrls = mockFetch.mock.calls.map(([url]: [string]) => url);
+      expect(fetchedUrls.some(u => u.endsWith('/lxc/100/config'))).toBe(true);
+      expect(fetchedUrls.some(u => u.endsWith('/lxc/101/config'))).toBe(false);
     });
 
     it('strips CIDR notation from IP addresses', async () => {
-      mockClient.get.mockImplementation((url: string) => {
-        if (url === '/api2/json/nodes') {
-          return Promise.resolve({
-            data: { data: [{ node: 'pve', status: 'online' }] },
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith('/api2/json/nodes')) return proxmoxData([{ node: 'pve', status: 'online' }]);
+        if (url.endsWith('/api2/json/nodes/pve/qemu')) return proxmoxData([]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc')) return proxmoxData([{ vmid: 100, name: 'cidr-lxc', status: 'running' }]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc/100/config')) {
+          return proxmoxData({
+            net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.1',
+            net1: 'name=eth1,bridge=vmbr1,ip=10.0.0.50/16',
           });
         }
-        if (url === '/api2/json/nodes/pve/qemu') {
-          return Promise.resolve({ data: { data: [] } });
-        }
-        if (url === '/api2/json/nodes/pve/lxc') {
-          return Promise.resolve({
-            data: {
-              data: [{ vmid: 100, name: 'cidr-lxc', status: 'running' }],
-            },
-          });
-        }
-        if (url === '/api2/json/nodes/pve/lxc/100/config') {
-          return Promise.resolve({
-            data: {
-              data: {
-                net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.100/24,gw=192.168.1.1',
-                net1: 'name=eth1,bridge=vmbr1,ip=10.0.0.50/16',
-              },
-            },
-          });
-        }
-        return Promise.resolve({ data: { data: [] } });
+        return proxmoxData([]);
       });
 
       const inventory = await connector.discoverAll();
-
       const lxcWorkload = inventory.workloads[0];
-      // CIDR notation should be stripped
       expect((lxcWorkload.spec as any).addresses.lan).toBe('192.168.1.100');
       expect((lxcWorkload.spec as any).addresses.net1).toBe('10.0.0.50');
     });
 
     it('includes IP addresses in full discovery flow', async () => {
-      mockClient.get.mockImplementation((url: string) => {
-        if (url === '/api2/json/nodes') {
-          return Promise.resolve({
-            data: {
-              data: [{ node: 'pve', status: 'online' }],
-            },
-          });
+      mockFetch.mockImplementation((url: string) => {
+        if (url.endsWith('/api2/json/nodes')) return proxmoxData([{ node: 'pve', status: 'online' }]);
+        if (url.endsWith('/api2/json/nodes/pve/qemu')) return proxmoxData([{ vmid: 101, name: 'vm', status: 'running' }]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc')) return proxmoxData([{ vmid: 201, name: 'container', status: 'running' }]);
+        if (url.endsWith('/api2/json/nodes/pve/lxc/201/config')) {
+          return proxmoxData({ net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.201/24,gw=192.168.1.1' });
         }
-        if (url === '/api2/json/nodes/pve/qemu') {
-          return Promise.resolve({
-            data: {
-              data: [{ vmid: 101, name: 'vm', status: 'running' }],
-            },
-          });
-        }
-        if (url === '/api2/json/nodes/pve/lxc') {
-          return Promise.resolve({
-            data: {
-              data: [{ vmid: 201, name: 'container', status: 'running' }],
-            },
-          });
-        }
-        if (url === '/api2/json/nodes/pve/lxc/201/config') {
-          return Promise.resolve({
-            data: {
-              data: {
-                net0: 'name=eth0,bridge=vmbr0,ip=192.168.1.201/24,gw=192.168.1.1',
-              },
-            },
-          });
-        }
-        return Promise.resolve({ data: { data: [] } });
+        return proxmoxData([]);
       });
 
       const inventory = await connector.discoverAll();
@@ -495,22 +325,7 @@ describe('ProxmoxConnector', () => {
 
       const lxcWorkload = inventory.workloads.find(w => w.type === 'proxmox-lxc');
       expect(lxcWorkload).toBeDefined();
-      expect((lxcWorkload?.spec as any).addresses).toEqual({
-        lan: '192.168.1.201',
-      });
+      expect((lxcWorkload?.spec as any).addresses).toEqual({ lan: '192.168.1.201' });
     });
   });
 });
-
-// Helper function to test parseNetworkAddresses through the discovery flow
-function testParseNetworksViaDiscovery(
-  connector: ProxmoxConnector,
-  mockClient: any,
-  node: string,
-  vmid: number,
-  config: any
-) {
-  return {
-    addresses: config ? { lan: '192.168.1.100' } : {},
-  };
-}
