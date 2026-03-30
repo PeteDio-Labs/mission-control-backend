@@ -7,6 +7,7 @@ import { ArgoCDConnector } from './connectors/argocd';
 import { PrometheusConnector } from './connectors/prometheus';
 import { NotificationClient } from './connectors/notification';
 import { QBittorrentConnector } from './connectors/qbittorrent';
+import { DeployWatcher } from './services/deployWatcher';
 import { syncDiscoveredInventory } from './db/inventory';
 import app from './app';
 import {
@@ -149,6 +150,16 @@ async function startServer() {
       }
     } else {
       logger.info('ℹ️ Notification service client skipped (NOTIFICATION_SERVICE_URL not set)');
+    }
+
+    // Start deploy watcher if both k8s and notification are available
+    const notifClient = app.locals.notificationClient as NotificationClient | undefined;
+    if (notifClient) {
+      const deployWatcher = new DeployWatcher(connector, notifClient);
+      deployWatcher.start();
+      logger.info('✅ Deploy watcher started');
+    } else {
+      logger.info('ℹ️ Deploy watcher skipped (notification service not available)');
     }
 
     const syncIntervalMs = Number(process.env.INVENTORY_SYNC_INTERVAL_MS || 60000);
