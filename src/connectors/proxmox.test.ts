@@ -2,11 +2,10 @@
  * Proxmox Connector Tests
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ProxmoxConnector } from './proxmox';
 
 const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
 
 function okJson(data: unknown) {
   return Promise.resolve({
@@ -23,9 +22,11 @@ function proxmoxData(data: unknown) {
 
 describe('ProxmoxConnector', () => {
   let connector: ProxmoxConnector;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
 
     connector = new ProxmoxConnector({
       baseUrl: 'https://proxmox.local:8006',
@@ -35,6 +36,10 @@ describe('ProxmoxConnector', () => {
     });
 
     await connector.initialize();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   it('initializes the client with expected settings', async () => {

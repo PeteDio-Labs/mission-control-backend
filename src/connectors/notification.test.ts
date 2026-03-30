@@ -2,7 +2,7 @@
  * Notification Client Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NotificationClient } from './notification';
 
 // Mock metrics to avoid registry conflicts
@@ -12,14 +12,19 @@ vi.mock('../metrics', () => ({
 }));
 
 const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
 
 describe('NotificationClient', () => {
   let client: NotificationClient;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
     client = new NotificationClient('http://notification-service:3002');
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   describe('initialization', () => {

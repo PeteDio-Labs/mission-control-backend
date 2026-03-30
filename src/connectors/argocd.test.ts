@@ -2,11 +2,10 @@
  * ArgoCD Connector Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ArgoCDConnector } from './argocd';
 
 const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
 
 function okJson(data: unknown) {
   return Promise.resolve({
@@ -29,10 +28,16 @@ function errorResponse(status: number, message: string) {
 
 describe('ArgoCDConnector', () => {
   let connector: ArgoCDConnector;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
     connector = new ArgoCDConnector('https://argocd.example.com', 'test-token-123', true);
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   describe('initialization', () => {

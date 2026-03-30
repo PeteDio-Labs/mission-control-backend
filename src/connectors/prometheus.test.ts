@@ -2,11 +2,10 @@
  * Prometheus Connector Tests
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PrometheusConnector } from './prometheus';
 
 const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
 
 function okJson(data: unknown) {
   return Promise.resolve({
@@ -25,10 +24,16 @@ function vectorResponse(results: Array<{ metric: Record<string, string>; value: 
 
 describe('PrometheusConnector', () => {
   let connector: PrometheusConnector;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
     connector = new PrometheusConnector('http://prometheus.example.com:9090');
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
   });
 
   describe('initialization', () => {
