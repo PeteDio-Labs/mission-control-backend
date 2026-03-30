@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           echo "//registry.toastedbytes.com/repository/npm-group/:_auth=${{ secrets.NEXUS_NPM_TOKEN }}" >> .npmrc
-          bun install --frozen-lockfile
+          bun install
           sed -i '/_auth=/d' .npmrc
 
       - name: Lint
