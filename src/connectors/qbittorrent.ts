@@ -97,6 +97,37 @@ export class QBittorrentConnector {
     return this.makeRequest<TransferInfo>('/api/v2/transfer/info');
   }
 
+  async addTorrent(magnetUrl: string, category: string): Promise<void> {
+    const url = `${this.host}/api/v2/torrents/add`;
+    const start = Date.now();
+    const body = new URLSearchParams({ urls: magnetUrl, category });
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+        signal: AbortSignal.timeout(this.timeout),
+      });
+
+      const duration = (Date.now() - start) / 1000;
+      qbittorrentRequestDuration.observe(duration);
+
+      if (!response.ok) {
+        throw new Error(`qBittorrent API error: ${response.status} ${response.statusText}`);
+      }
+    } catch (error: unknown) {
+      const duration = (Date.now() - start) / 1000;
+      qbittorrentRequestDuration.observe(duration);
+
+      if (error instanceof Error) {
+        logger.error('qBittorrent addTorrent failed', { magnetUrl, category, error: error.message });
+        throw new Error(`Failed to add torrent: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
   async isAvailable(): Promise<boolean> {
     return this.testConnection();
   }

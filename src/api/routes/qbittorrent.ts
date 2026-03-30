@@ -4,8 +4,14 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { QBittorrentConnector } from '../../connectors/qbittorrent';
 import { logger } from '../../utils/logger';
+
+const AddTorrentSchema = z.object({
+  magnetUrl: z.string().min(1, 'magnetUrl is required').startsWith('magnet:', 'Must be a magnet link'),
+  category: z.enum(['tv-sonarr', 'radarr']),
+});
 
 const router = Router();
 
@@ -111,12 +117,41 @@ export async function getTransferInfo(
   }
 }
 
+/**
+ * POST /api/v1/qbittorrent/torrents
+ * Add a torrent by magnet link
+ * Body: { magnetUrl: string, category: 'tv-sonarr' | 'radarr' }
+ */
+export async function addTorrent(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  const parsed = AddTorrentSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0].message });
+    return;
+  }
+
+  try {
+    const connector = getConnector(req);
+    await connector.addTorrent(parsed.data.magnetUrl, parsed.data.category);
+    res.status(200).json({ data: { success: true } });
+  } catch (error) {
+    logger.error('Failed to add torrent:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to add torrent',
+    });
+  }
+}
+
 // ============================================================================
-// ROUTER SETUP (READ_ONLY)
+// ROUTER SETUP
 // ============================================================================
 
 router.get('/status', getStatus);
 router.get('/torrents', getTorrents);
+router.post('/torrents', addTorrent);
 router.get('/torrents/:hash', getTorrentDetails);
 router.get('/transfer', getTransferInfo);
 
