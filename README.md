@@ -34,6 +34,12 @@ bun run db:test  # verify DB connection
 | `GET /api/v1/inventory/hosts` | K8s/Proxmox hosts |
 | `GET /api/v1/inventory/workloads` | K8s workloads |
 | `POST /api/v1/inventory/sync` | Trigger discovery |
+| `GET /api/v1/agents` | List agent run history |
+| `POST /api/v1/agents/:name/trigger` | Dispatch agent task |
+| `GET /api/v1/agents/:taskId/status` | Get task status |
+| `POST /api/v1/agents/:taskId/status` | Agent status update (agent → MC) |
+| `POST /api/v1/agents/:taskId/result` | Agent result (agent → MC) |
+| `POST /api/v1/agents/:taskId/approve` | Approve/reject gated action |
 
 ## Stack
 
