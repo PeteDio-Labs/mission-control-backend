@@ -12,6 +12,7 @@ import eventsRouter from './events';
 import qbittorrentRouter from './qbittorrent';
 import prometheusRouter from './prometheus';
 import kubernetesRouter from './kubernetes';
+import agentsRouter from './agents';
 
 const routes = Router();
 
@@ -27,6 +28,7 @@ apiV1Router.use('/events', eventsRouter);
 apiV1Router.use('/qbittorrent', qbittorrentRouter);
 apiV1Router.use('/prometheus', prometheusRouter);
 apiV1Router.use('/kubernetes', kubernetesRouter);
+apiV1Router.use('/agents', agentsRouter);
 
 routes.use('/api/v1', apiV1Router);
 
