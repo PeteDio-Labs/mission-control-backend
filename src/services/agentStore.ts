@@ -33,6 +33,7 @@ export interface AgentRunRow {
   result: AgentResult | null;
   pending_approval: GatedAction | null;
   summary: string | null;
+  current_message: string | null;
   issued_at: string;
   started_at: string;
   completed_at: string | null;
@@ -61,10 +62,11 @@ export async function updateStatus(update: AgentStatusUpdate): Promise<AgentRunR
   // UPSERT — self-triggered runs (cron, event, api) generate their own taskId before
   // registering with MC, so the row may not exist yet on first status report.
   const row = await db.queryOne<AgentRunRow>(
-    `INSERT INTO agent_runs (task_id, agent_name, trigger, input, issued_at, status)
-     VALUES ($3, $4, 'manual', '{}', NOW(), $1)
+    `INSERT INTO agent_runs (task_id, agent_name, trigger, input, issued_at, status, current_message)
+     VALUES ($3, $4, 'manual', '{}', NOW(), $1, $5)
      ON CONFLICT (task_id) DO UPDATE
        SET status = $1,
+           current_message = COALESCE($5, agent_runs.current_message),
            pending_approval = CASE WHEN $2::jsonb IS NOT NULL THEN $2::jsonb ELSE agent_runs.pending_approval END
      RETURNING *`,
     [
@@ -72,6 +74,7 @@ export async function updateStatus(update: AgentStatusUpdate): Promise<AgentRunR
       update.requiresApproval ? JSON.stringify(update.requiresApproval) : null,
       update.taskId,
       update.agentName,
+      update.message ?? null,
     ],
   );
   if (!row) logger.warn('updateStatus: upsert returned no row', { taskId: update.taskId });
