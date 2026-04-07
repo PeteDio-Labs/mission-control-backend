@@ -31,6 +31,7 @@ import {
   listRuns,
   listLatestByAgent,
 } from '../../services/agentStore.js';
+import { dispatchToAgent } from '../../services/agentDispatcher.js';
 import { logger } from '../../utils/logger.js';
 
 const router = Router();
@@ -106,6 +107,10 @@ router.post('/:name/trigger', async (req: Request, res: Response) => {
   try {
     const run = await insertRun(parsed.data);
     logger.info('Agent triggered', { agentName, taskId: run.task_id });
+
+    // Dispatch async — agent responds 202 and reports back via /status + /result
+    setImmediate(() => dispatchToAgent(parsed.data));
+
     res.status(201).json({ taskId: run.task_id, agentName, status: run.status });
   } catch (err) {
     logger.error('POST /agents/:name/trigger failed', { error: (err as Error).message, agentName });
