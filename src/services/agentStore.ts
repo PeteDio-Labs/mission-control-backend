@@ -58,19 +58,23 @@ export async function insertRun(payload: TaskPayload): Promise<AgentRunRow> {
 // ─── Status update (from agent) ──────────────────────────────────
 
 export async function updateStatus(update: AgentStatusUpdate): Promise<AgentRunRow | null> {
+  // UPSERT — self-triggered runs (cron, event, api) generate their own taskId before
+  // registering with MC, so the row may not exist yet on first status report.
   const row = await db.queryOne<AgentRunRow>(
-    `UPDATE agent_runs
-     SET status = $1,
-         pending_approval = CASE WHEN $2::jsonb IS NOT NULL THEN $2::jsonb ELSE pending_approval END
-     WHERE task_id = $3
+    `INSERT INTO agent_runs (task_id, agent_name, trigger, input, issued_at, status)
+     VALUES ($3, $4, 'manual', '{}', NOW(), $1)
+     ON CONFLICT (task_id) DO UPDATE
+       SET status = $1,
+           pending_approval = CASE WHEN $2::jsonb IS NOT NULL THEN $2::jsonb ELSE agent_runs.pending_approval END
      RETURNING *`,
     [
       update.status,
       update.requiresApproval ? JSON.stringify(update.requiresApproval) : null,
       update.taskId,
+      update.agentName,
     ],
   );
-  if (!row) logger.warn('updateStatus: run not found', { taskId: update.taskId });
+  if (!row) logger.warn('updateStatus: upsert returned no row', { taskId: update.taskId });
   return row;
 }
 
