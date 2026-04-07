@@ -8,6 +8,7 @@ import { PrometheusConnector } from './connectors/prometheus';
 import { NotificationClient } from './connectors/notification';
 import { QBittorrentConnector } from './connectors/qbittorrent';
 import { DeployWatcher } from './services/deployWatcher';
+import { EventRouter } from './services/eventRouter';
 import { syncDiscoveredInventory } from './db/inventory';
 import app from './app';
 import {
@@ -161,6 +162,11 @@ async function startServer() {
     } else {
       logger.info('ℹ️ Deploy watcher skipped (notification service not available)');
     }
+
+    // Start event router — maps infra events → agent dispatch
+    const eventRouter = new EventRouter();
+    eventRouter.start();
+    logger.info('✅ Event router started');
 
     const syncIntervalMs = Number(process.env.INVENTORY_SYNC_INTERVAL_MS || 60000);
     if (syncIntervalMs > 0) {
