@@ -9,6 +9,7 @@ import { NotificationClient } from './connectors/notification';
 import { QBittorrentConnector } from './connectors/qbittorrent';
 import { DeployWatcher } from './services/deployWatcher';
 import { EventRouter } from './services/eventRouter';
+import { CronRunner } from './services/cronRunner';
 import { syncDiscoveredInventory } from './db/inventory';
 import app from './app';
 import {
@@ -167,6 +168,11 @@ async function startServer() {
     const eventRouter = new EventRouter();
     eventRouter.start();
     logger.info('✅ Event router started');
+
+    // Start cron runner — scheduled agent triggers
+    const cronRunner = new CronRunner();
+    cronRunner.start();
+    logger.info('✅ Cron runner started');
 
     const syncIntervalMs = Number(process.env.INVENTORY_SYNC_INTERVAL_MS || 60000);
     if (syncIntervalMs > 0) {
