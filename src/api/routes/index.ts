@@ -13,6 +13,7 @@ import qbittorrentRouter from './qbittorrent';
 import prometheusRouter from './prometheus';
 import kubernetesRouter from './kubernetes';
 import agentsRouter from './agents';
+import githubRouter from './github';
 
 const routes = Router();
 
@@ -29,6 +30,7 @@ apiV1Router.use('/qbittorrent', qbittorrentRouter);
 apiV1Router.use('/prometheus', prometheusRouter);
 apiV1Router.use('/kubernetes', kubernetesRouter);
 apiV1Router.use('/agents', agentsRouter);
+apiV1Router.use('/github/webhook', githubRouter);
 
 routes.use('/api/v1', apiV1Router);
 
