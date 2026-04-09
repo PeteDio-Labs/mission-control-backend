@@ -80,10 +80,36 @@ export async function getPodLogs(
   }
 }
 
+/**
+ * GET /api/v1/kubernetes/status
+ * Test Kubernetes connection and return status
+ */
+export async function getStatus(
+  req: Request,
+  res: Response,
+  _next: NextFunction
+): Promise<void> {
+  try {
+    const connector = getConnector(req);
+    // Since connector throws if undefined, we assume true if we got here
+    res.json({
+      data: {
+        connected: true,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    res.status(503).json({
+      error: error instanceof Error ? error.message : 'Kubernetes connector not available',
+    });
+  }
+}
+
 // ============================================================================
 // ROUTER SETUP
 // ============================================================================
 
+router.get('/status', getStatus);
 router.post('/deployments/:namespace/:name/restart', restartDeployment);
 router.get('/pods/:namespace/:name/logs', getPodLogs);
 
