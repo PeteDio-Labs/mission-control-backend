@@ -90,7 +90,7 @@ export async function getStatus(
   _next: NextFunction
 ): Promise<void> {
   try {
-    const connector = getConnector(req);
+    getConnector(req);
     // Since connector throws if undefined, we assume true if we got here
     res.json({
       data: {

@@ -318,7 +318,6 @@ export class ProxmoxConnector {
         ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
       },
       signal: AbortSignal.timeout(this.connectionTimeout),
-      // @ts-expect-error — Bun-specific fetch option to skip TLS verification for self-signed Proxmox certs
       tls: { rejectUnauthorized: false },
     });
 
