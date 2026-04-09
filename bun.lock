@@ -7,7 +7,7 @@
       "dependencies": {
         "@google/generative-ai": "^0.2.1",
         "@kubernetes/client-node": "^0.20.0",
-        "@petedio/shared": "^1.0.1",
+        "@petedio/shared": "^1.0.2",
         "cors": "^2.8.6",
         "dotenv": "^16.6.1",
         "express": "^4.22.1",
@@ -146,7 +146,7 @@
 
     "@paralleldrive/cuid2": ["@paralleldrive/cuid2@2.3.1", "", { "dependencies": { "@noble/hashes": "^1.1.5" } }, "sha512-XO7cAxhnTZl0Yggq6jOgjiOHhbgcO4NqFqwSmQpjK3b6TEE6Uj/jfSk6wzYyemh3+I0sHirKSetjQwn5cZktFw=="],
 
-    "@petedio/shared": ["@petedio/shared@1.0.1", "https://registry.toastedbytes.com/repository/npm-group/@petedio/shared/-/shared-1.0.1.tgz", { "dependencies": { "zod": "^4.3.6" } }, "sha512-82bjyfsr1CZZ+R2JhY0gXekETi1SS8smw/jzNl7EVUKC5h75L+3Izo1NRQ+PxqrzqKN9XMWf08KsIRQq0Y0M8w=="],
+    "@petedio/shared": ["@petedio/shared@1.0.2", "https://registry.toastedbytes.com/repository/npm-group/@petedio/shared/-/shared-1.0.2.tgz", { "dependencies": { "zod": "^4.3.6" } }, "sha512-u5Nr7A2qmIVuJ7NZ+D98tr+FV/ydgpC8EuRNe6sBIUVC+8rw99F1BWoxInq27uO0Zkaq7Yfd0hwEYZGUzYi2GQ=="],
 
     "@polka/url": ["@polka/url@1.0.0-next.29", "", {}, "sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww=="],
 
