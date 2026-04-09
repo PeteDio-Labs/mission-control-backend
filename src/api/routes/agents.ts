@@ -23,7 +23,6 @@ import {
   AgentResultSchema,
 } from '@petedio/shared/agents';
 import {
-  insertRun,
   updateStatus,
   recordResult,
   resolveApproval,
@@ -31,8 +30,8 @@ import {
   listRuns,
   listLatestByAgent,
 } from '../../services/agentStore.js';
-import { dispatchToAgent } from '../../services/agentDispatcher.js';
 import { logger } from '../../utils/logger.js';
+import type { TaskQueue } from '../../services/taskQueue.js';
 
 const router = Router();
 
@@ -105,16 +104,17 @@ router.post('/:name/trigger', async (req: Request, res: Response) => {
   }
 
   try {
-    const run = await insertRun(parsed.data);
-    logger.info('Agent triggered', { agentName, taskId: run.task_id });
-
-    // Dispatch async — agent responds 202 and reports back via /status + /result
-    setImmediate(() => dispatchToAgent(parsed.data));
-
-    res.status(201).json({ taskId: run.task_id, agentName, status: run.status });
+    const taskQueue = req.app.locals.taskQueue as TaskQueue | undefined;
+    if (!taskQueue) {
+      res.status(503).json({ error: 'Task queue not initialised' });
+      return;
+    }
+    await taskQueue.enqueue(parsed.data, { priority: 5 });
+    logger.info('Agent triggered — enqueued', { agentName, taskId: parsed.data.taskId });
+    res.status(202).json({ taskId: parsed.data.taskId, agentName, status: 'queued' });
   } catch (err) {
     logger.error('POST /agents/:name/trigger failed', { error: (err as Error).message, agentName });
-    res.status(500).json({ error: 'Failed to dispatch agent' });
+    res.status(500).json({ error: 'Failed to enqueue agent task' });
   }
 });
 

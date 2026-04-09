@@ -10,6 +10,7 @@ import { QBittorrentConnector } from './connectors/qbittorrent';
 import { DeployWatcher } from './services/deployWatcher';
 import { EventRouter } from './services/eventRouter';
 import { CronRunner } from './services/cronRunner';
+import { TaskQueue } from './services/taskQueue';
 import { syncDiscoveredInventory } from './db/inventory';
 import app from './app';
 import {
@@ -30,6 +31,7 @@ let server: ReturnType<typeof app.listen>;
 let deployWatcherRef: import('./services/deployWatcher').DeployWatcher | null = null;
 let eventRouterRef: EventRouter | null = null;
 let cronRunnerRef: CronRunner | null = null;
+let taskQueueRef: TaskQueue | null = null;
 let inventorySyncTimer: ReturnType<typeof setInterval> | null = null;
 
 async function startServer() {
@@ -168,13 +170,23 @@ async function startServer() {
       logger.info('ℹ️ Deploy watcher skipped (notification service not available)');
     }
 
+    // Start task queue — durable Postgres-backed dispatch
+    taskQueueRef = new TaskQueue({
+      pollIntervalMs: 5_000,
+      maxConcurrencyPerAgent: 1,
+      maxOllamaConcurrency: Number(process.env.MAX_OLLAMA_CONCURRENCY ?? 2),
+    });
+    taskQueueRef.start();
+    app.locals.taskQueue = taskQueueRef;
+    logger.info('✅ Task queue started');
+
     // Start event router — maps infra events → agent dispatch
-    eventRouterRef = new EventRouter();
+    eventRouterRef = new EventRouter(taskQueueRef);
     eventRouterRef.start();
     logger.info('✅ Event router started');
 
     // Start cron runner — scheduled agent triggers
-    cronRunnerRef = new CronRunner();
+    cronRunnerRef = new CronRunner(taskQueueRef);
     cronRunnerRef.start();
     logger.info('✅ Cron runner started');
 
@@ -225,6 +237,7 @@ const gracefulShutdown = async (signal: string) => {
   // Stop background services before closing DB (prevents dispatch after pool close)
   cronRunnerRef?.stop();
   eventRouterRef?.stop();
+  taskQueueRef?.stop();
   deployWatcherRef?.stop();
   if (inventorySyncTimer) clearInterval(inventorySyncTimer);
   logger.info('Background services stopped');

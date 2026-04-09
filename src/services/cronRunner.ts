@@ -11,8 +11,7 @@
 
 import { randomUUID } from 'crypto';
 import { logger } from '../utils/logger.js';
-import { insertRun } from './agentStore.js';
-import { dispatchToAgent } from './agentDispatcher.js';
+import type { TaskQueue } from './taskQueue.js';
 import type { TaskPayload } from '@petedio/shared/agents';
 
 // ─── Job definition ──────────────────────────────────────────────
@@ -70,6 +69,8 @@ export class CronRunner {
   private timers: ReturnType<typeof setTimeout>[] = [];
   private running = new Set<string>();
 
+  constructor(private queue: TaskQueue) {}
+
   start(): void {
     for (const job of JOBS) {
       this.scheduleJob(job);
@@ -101,10 +102,9 @@ export class CronRunner {
       };
 
       try {
-        await insertRun(payload);
-        await dispatchToAgent(payload);
+        await this.queue.enqueue(payload, { priority: 5 });
       } catch (err) {
-        logger.error('CronRunner: job dispatch failed', {
+        logger.error('CronRunner: job enqueue failed', {
           job: job.name,
           error: (err as Error).message,
         });

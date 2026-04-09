@@ -14,8 +14,7 @@
 import { randomUUID } from 'crypto';
 import { logger } from '../utils/logger.js';
 import { eventBus } from '../api/routes/events.js';
-import { insertRun } from './agentStore.js';
-import { dispatchToAgent } from './agentDispatcher.js';
+import type { TaskQueue } from './taskQueue.js';
 import type { InfraEvent } from '@petedio/shared';
 import type { TaskPayload } from '@petedio/shared/agents';
 
@@ -40,6 +39,8 @@ interface RoutingRule {
   };
   /** Cooldown in ms — rule won't fire again within this window (default: 5 min) */
   cooldownMs?: number;
+  /** Queue priority — 1=critical, 5=normal (default: 5) */
+  priority?: number;
   /** Build the agent input from the event */
   buildInput: (event: InfraEvent) => Record<string, unknown>;
 }
@@ -76,6 +77,7 @@ const RULES: RoutingRule[] = [
     agentName: 'ops-investigator',
     trigger: 'infra-event',
     cooldownMs: 15 * 60 * 1000, // 15 min
+    priority: 1, // critical — jump the queue
     match: {
       severity: 'critical',
     },
@@ -146,6 +148,8 @@ export class EventRouter {
   private listener: ((rawEvent: unknown) => void) | null = null;
   private lastFiredAt: Map<string, number> = new Map();
 
+  constructor(private queue: TaskQueue) {}
+
   start(): void {
     if (this.started) return;
     this.started = true;
@@ -198,10 +202,9 @@ export class EventRouter {
       };
 
       try {
-        await insertRun(payload);
-        setImmediate(() => dispatchToAgent(payload));
+        await this.queue.enqueue(payload, { priority: rule.priority ?? 5 });
       } catch (err) {
-        logger.error('EventRouter: failed to insert/dispatch run', {
+        logger.error('EventRouter: failed to enqueue run', {
           rule: rule.name,
           error: (err as Error).message,
         });
