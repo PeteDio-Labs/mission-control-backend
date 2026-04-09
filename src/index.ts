@@ -11,6 +11,9 @@ import { DeployWatcher } from './services/deployWatcher';
 import { EventRouter } from './services/eventRouter';
 import { CronRunner } from './services/cronRunner';
 import { TaskQueue } from './services/taskQueue';
+import { TaskReaper } from './services/taskReaper';
+import { HealthChecker } from './services/healthChecker';
+import { AGENT_REGISTRY } from './config/agents';
 import { syncDiscoveredInventory } from './db/inventory';
 import app from './app';
 import {
@@ -32,6 +35,8 @@ let deployWatcherRef: import('./services/deployWatcher').DeployWatcher | null = 
 let eventRouterRef: EventRouter | null = null;
 let cronRunnerRef: CronRunner | null = null;
 let taskQueueRef: TaskQueue | null = null;
+let taskReaperRef: TaskReaper | null = null;
+let healthCheckerRef: HealthChecker | null = null;
 let inventorySyncTimer: ReturnType<typeof setInterval> | null = null;
 
 async function startServer() {
@@ -190,6 +195,30 @@ async function startServer() {
     cronRunnerRef.start();
     logger.info('✅ Cron runner started');
 
+    // Start task reaper — marks zombie running/approval tasks as failed
+    taskReaperRef = new TaskReaper({ intervalMs: 60_000 });
+    taskReaperRef.start();
+    app.locals.taskReaper = taskReaperRef;
+    logger.info('✅ Task reaper started');
+
+    // Start health checker — polls agent /health endpoints every 30s
+    const notifClientForHealth = app.locals.notificationClient as NotificationClient | undefined;
+    const notifyHealth = async (agentName: string, status: 'ok' | 'unreachable') => {
+      await notifClientForHealth?.publishEvent({
+        source: 'mission-control',
+        type: status === 'unreachable' ? 'agent-down' : 'agent-recovered',
+        severity: status === 'unreachable' ? 'warning' : 'info',
+        message: `Agent ${agentName} is ${status}`,
+        affected_service: agentName,
+        namespace: 'mission-control',
+        metadata: {},
+      });
+    };
+    healthCheckerRef = new HealthChecker(Object.values(AGENT_REGISTRY), { intervalMs: 30_000 }, fetch, notifyHealth);
+    healthCheckerRef.start();
+    app.locals.healthChecker = healthCheckerRef;
+    logger.info('✅ Health checker started');
+
     const syncIntervalMs = Number(process.env.INVENTORY_SYNC_INTERVAL_MS || 60000);
     if (syncIntervalMs > 0) {
       inventorySyncTimer = setInterval(async () => {
@@ -235,6 +264,8 @@ const gracefulShutdown = async (signal: string) => {
   logger.info(`${signal} received. Starting graceful shutdown...`);
 
   // Stop background services before closing DB (prevents dispatch after pool close)
+  healthCheckerRef?.stop();
+  taskReaperRef?.stop();
   cronRunnerRef?.stop();
   eventRouterRef?.stop();
   taskQueueRef?.stop();

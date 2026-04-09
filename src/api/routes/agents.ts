@@ -32,15 +32,22 @@ import {
 } from '../../services/agentStore.js';
 import { logger } from '../../utils/logger.js';
 import type { TaskQueue } from '../../services/taskQueue.js';
+import type { HealthChecker } from '../../services/healthChecker.js';
 
 const router = Router();
 
 // ─── GET /agents — live status panel (one row per agent name) ────
 
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const rows = await listLatestByAgent();
-    res.json({ agents: rows });
+    const healthChecker = req.app.locals.healthChecker as HealthChecker | undefined;
+    const health = healthChecker?.getAllHealth() ?? {};
+    const agents = rows.map(row => ({
+      ...row,
+      health: health[row.agent_name] ?? null,
+    }));
+    res.json({ agents });
   } catch (err) {
     logger.error('GET /agents failed', { error: (err as Error).message });
     res.status(500).json({ error: 'Failed to list agents' });
