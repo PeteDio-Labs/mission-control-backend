@@ -27,6 +27,10 @@ const PORT = process.env.PORT || 3000;
 
 // Start server
 let server: ReturnType<typeof app.listen>;
+let deployWatcherRef: import('./services/deployWatcher').DeployWatcher | null = null;
+let eventRouterRef: EventRouter | null = null;
+let cronRunnerRef: CronRunner | null = null;
+let inventorySyncTimer: ReturnType<typeof setInterval> | null = null;
 
 async function startServer() {
   try {
@@ -157,26 +161,26 @@ async function startServer() {
     // Start deploy watcher if both k8s and notification are available
     const notifClient = app.locals.notificationClient as NotificationClient | undefined;
     if (notifClient) {
-      const deployWatcher = new DeployWatcher(connector, notifClient);
-      deployWatcher.start();
+      deployWatcherRef = new DeployWatcher(connector, notifClient);
+      deployWatcherRef.start();
       logger.info('✅ Deploy watcher started');
     } else {
       logger.info('ℹ️ Deploy watcher skipped (notification service not available)');
     }
 
     // Start event router — maps infra events → agent dispatch
-    const eventRouter = new EventRouter();
-    eventRouter.start();
+    eventRouterRef = new EventRouter();
+    eventRouterRef.start();
     logger.info('✅ Event router started');
 
     // Start cron runner — scheduled agent triggers
-    const cronRunner = new CronRunner();
-    cronRunner.start();
+    cronRunnerRef = new CronRunner();
+    cronRunnerRef.start();
     logger.info('✅ Cron runner started');
 
     const syncIntervalMs = Number(process.env.INVENTORY_SYNC_INTERVAL_MS || 60000);
     if (syncIntervalMs > 0) {
-      setInterval(async () => {
+      inventorySyncTimer = setInterval(async () => {
         try {
           logger.info('⏱️ Running scheduled inventory sync');
           const proxmoxConnector = app.locals
@@ -217,6 +221,13 @@ startServer();
 // Graceful shutdown
 const gracefulShutdown = async (signal: string) => {
   logger.info(`${signal} received. Starting graceful shutdown...`);
+
+  // Stop background services before closing DB (prevents dispatch after pool close)
+  cronRunnerRef?.stop();
+  eventRouterRef?.stop();
+  deployWatcherRef?.stop();
+  if (inventorySyncTimer) clearInterval(inventorySyncTimer);
+  logger.info('Background services stopped');
 
   // Close HTTP server
   server.close(async () => {

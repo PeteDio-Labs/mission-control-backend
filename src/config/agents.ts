@@ -18,11 +18,15 @@ const BLOG_AGENT_URL =
 
 const OPS_INVESTIGATOR_URL =
   process.env.OPS_INVESTIGATOR_URL ||
-  'http://ops-investigator.blog-dev.svc.cluster.local:3005';
+  'http://192.168.50.113:3005';
 
 const PM_AGENT_URL =
   process.env.PM_AGENT_URL ||
-  'http://pm-agent.blog-dev.svc.cluster.local:3006';
+  'http://192.168.50.113:3006';
+
+const KNOWLEDGE_JANITOR_URL =
+  process.env.KNOWLEDGE_JANITOR_URL ||
+  'http://192.168.50.113:3007';
 
 export const AGENT_REGISTRY: Record<string, AgentDefinition> = {
   'blog-agent': {
@@ -39,6 +43,11 @@ export const AGENT_REGISTRY: Record<string, AgentDefinition> = {
     name: 'pm-agent',
     url: PM_AGENT_URL,
     description: 'Manages project tasks and planning documents',
+  },
+  'knowledge-janitor': {
+    name: 'knowledge-janitor',
+    url: KNOWLEDGE_JANITOR_URL,
+    description: 'Audits knowledge/ for stale docs, proposes cleanup, ingests to RAG',
   },
 };
 

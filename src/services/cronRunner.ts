@@ -52,6 +52,16 @@ const JOBS: CronJob[] = [
       topic: 'Weekly infrastructure and development recap',
     }),
   },
+  {
+    name: 'weekly-knowledge-audit',
+    agentName: 'knowledge-janitor',
+    intervalMs: 7 * DAY,
+    initialDelayMs: 8 * HOUR, // first run 8h after startup
+    buildInput: () => ({
+      focus: 'staleness-audit',
+      summary: 'Weekly audit of knowledge/ — detect stale docs, dead links, and propose cleanup',
+    }),
+  },
 ];
 
 // ─── Runner ──────────────────────────────────────────────────────

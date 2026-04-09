@@ -125,18 +125,7 @@ const RULES: RoutingRule[] = [
 ];
 
 // ─── Cooldown tracker ─────────────────────────────────────────────
-
-const lastFiredAt: Map<string, number> = new Map();
-
-function isOnCooldown(ruleName: string, cooldownMs: number): boolean {
-  const last = lastFiredAt.get(ruleName);
-  if (!last) return false;
-  return Date.now() - last < cooldownMs;
-}
-
-function markFired(ruleName: string): void {
-  lastFiredAt.set(ruleName, Date.now());
-}
+// Kept as instance state on EventRouter so tests can create isolated instances.
 
 // ─── Matcher ─────────────────────────────────────────────────────
 
@@ -154,19 +143,31 @@ function matchesRule(event: InfraEvent, rule: RoutingRule): boolean {
 
 export class EventRouter {
   private started = false;
+  private listener: ((rawEvent: unknown) => void) | null = null;
+  private lastFiredAt: Map<string, number> = new Map();
 
   start(): void {
     if (this.started) return;
     this.started = true;
 
-    eventBus.on('event', (rawEvent: unknown) => {
+    this.listener = (rawEvent: unknown) => {
       const event = rawEvent as InfraEvent;
       this.route(event).catch((err) =>
         logger.error('EventRouter: unhandled error', { error: (err as Error).message }),
       );
-    });
+    };
 
+    eventBus.on('event', this.listener);
     logger.info(`EventRouter started — ${RULES.length} rules loaded`);
+  }
+
+  stop(): void {
+    if (this.listener) {
+      eventBus.off('event', this.listener);
+      this.listener = null;
+    }
+    this.started = false;
+    logger.info('EventRouter stopped');
   }
 
   private async route(event: InfraEvent): Promise<void> {
@@ -174,12 +175,13 @@ export class EventRouter {
       if (!matchesRule(event, rule)) continue;
 
       const cooldown = rule.cooldownMs ?? 5 * 60 * 1000;
-      if (isOnCooldown(rule.name, cooldown)) {
+      const last = this.lastFiredAt.get(rule.name);
+      if (last && Date.now() - last < cooldown) {
         logger.debug('EventRouter: rule on cooldown, skipping', { rule: rule.name });
         continue;
       }
 
-      markFired(rule.name);
+      this.lastFiredAt.set(rule.name, Date.now());
       logger.info('EventRouter: rule matched — dispatching agent', {
         rule: rule.name,
         agentName: rule.agentName,
