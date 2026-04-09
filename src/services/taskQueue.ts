@@ -15,7 +15,7 @@
 import { randomUUID } from 'crypto';
 import db from '../db/client.js';
 import { logger } from '../utils/logger.js';
-import { dispatchToAgent } from './agentDispatcher.js';
+import { dispatchToAgent as defaultDispatch } from './agentDispatcher.js';
 import type { TaskPayload } from '@petedio/shared/agents';
 
 // ─── Config ────────────────────────────────────────────────────────
@@ -43,11 +43,16 @@ export class TaskQueue {
   private inFlight: Map<string, number> = new Map();
   /** total in-flight tool-loop agents (Ollama gate) */
   private ollamaGate = 0;
+  private readonly dispatch: (payload: TaskPayload) => Promise<void>;
 
-  constructor(opts: TaskQueueOptions = {}) {
+  constructor(
+    opts: TaskQueueOptions = {},
+    dispatch: (payload: TaskPayload) => Promise<void> = defaultDispatch,
+  ) {
     this.pollIntervalMs = opts.pollIntervalMs ?? 5_000;
     this.maxConcurrencyPerAgent = opts.maxConcurrencyPerAgent ?? 1;
     this.maxOllamaConcurrency = opts.maxOllamaConcurrency ?? 2;
+    this.dispatch = dispatch;
   }
 
   start(): void {
@@ -181,7 +186,7 @@ export class TaskQueue {
     _lockedBy: string,
   ): Promise<void> {
     try {
-      await dispatchToAgent(payload);
+      await this.dispatch(payload);
       // Dispatcher updates status to 'running' or 'failed' internally — nothing to do here
       logger.info('TaskQueue: dispatch accepted', {
         taskId: payload.taskId,

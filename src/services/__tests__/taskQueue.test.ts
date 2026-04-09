@@ -14,21 +14,11 @@ import { describe, it, expect, beforeEach, afterEach, mock, jest } from 'bun:tes
 
 // ─── Module mocks ─────────────────────────────────────────────────
 
-const mockDispatchToAgent = mock(() => Promise.resolve(undefined));
-const mockUpdateStatus = mock(() => Promise.resolve(null));
-const mockInsertRun = mock(() => Promise.resolve({ task_id: 'mock-id' }));
-const mockSendNotification = mock(() => Promise.resolve(undefined));
-
-// DB client mock — we replace queryOne / queryMany per test
+// DB client mock — no agentDispatcher mock needed (injected via constructor)
 const mockQueryOne = mock(() => Promise.resolve(null));
 const mockQueryMany = mock(() => Promise.resolve([]));
 const mockQuery = mock(() => Promise.resolve({ rows: [], rowCount: 0 }));
 
-mock.module('../agentDispatcher.js', () => ({ dispatchToAgent: mockDispatchToAgent }));
-mock.module('../agentStore.js', () => ({
-  insertRun: mockInsertRun,
-  updateStatus: mockUpdateStatus,
-}));
 mock.module('../../db/client.js', () => ({
   default: { queryOne: mockQueryOne, queryMany: mockQueryMany, query: mockQuery },
   db: { queryOne: mockQueryOne, queryMany: mockQueryMany, query: mockQuery },
@@ -66,16 +56,15 @@ const queuedRow = {
 
 describe('TaskQueue', () => {
   let queue: InstanceType<typeof TaskQueue>;
+  let mockDispatchToAgent: ReturnType<typeof mock>;
 
   beforeEach(() => {
-    mockDispatchToAgent.mockClear();
-    mockUpdateStatus.mockClear();
-    mockInsertRun.mockClear();
+    mockDispatchToAgent = mock(() => Promise.resolve(undefined));
     mockQueryOne.mockClear();
     mockQueryMany.mockClear();
     mockQuery.mockClear();
     jest.useFakeTimers();
-    queue = new TaskQueue({ pollIntervalMs: 1000 });
+    queue = new TaskQueue({ pollIntervalMs: 1000 }, mockDispatchToAgent);
   });
 
   afterEach(() => {
