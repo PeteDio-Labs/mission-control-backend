@@ -218,7 +218,7 @@ export class PrometheusConnector {
     try {
       const [apiServerResponse, nodeCountResponse, nodesReadyResponse, podCountResponse, podsRunningResponse] =
         await Promise.all([
-          this.queryInstant('up{job="kubernetes-apiservers"}'),
+          this.queryInstant('up{job="apiserver"}'),
           this.queryInstant('count(kube_node_info)'),
           this.queryInstant('sum(kube_node_status_condition{condition="Ready",status="true"})'),
           this.queryInstant('count(kube_pod_info)'),
