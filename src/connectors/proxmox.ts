@@ -318,9 +318,8 @@ export class ProxmoxConnector {
         ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
       },
       signal: AbortSignal.timeout(this.connectionTimeout),
-      // @ts-ignore - Bun specific fetch option in CI vs local types
       tls: { rejectUnauthorized: false },
-    });
+    } as any);
 
     if (!response.ok) {
       throw new Error(`Proxmox API error: HTTP ${response.status} ${response.statusText}`);
