@@ -48,30 +48,8 @@ interface RoutingRule {
 // ─── Routing rules ───────────────────────────────────────────────
 
 const RULES: RoutingRule[] = [
-  {
-    name: 'deploy → blog-agent',
-    agentName: 'blog-agent',
-    trigger: 'infra-event',
-    cooldownMs: 10 * 60 * 1000, // 10 min — don't spam on rapid redeploys
-    match: {
-      source: 'kubernetes',
-      type: 'deployment',
-      severity: 'info',
-    },
-    buildInput: (event) => ({
-      contentType: 'deploy-changelog',
-      topic: event.affected_service
-        ? `${event.affected_service} deployment update`
-        : 'service deployment update',
-      context: {
-        service: event.affected_service,
-        namespace: event.namespace,
-        image: (event.metadata as Record<string, unknown> | undefined)?.image,
-        previousImage: (event.metadata as Record<string, unknown> | undefined)?.previousImage,
-        eventMessage: event.message,
-      },
-    }),
-  },
+  // deploy → blog-agent rule removed: caused feedback loop (blog-agent deploy → K8s event → blog-agent → repeat)
+  // Blog posts are scheduled (cron Mon/Wed/Sat) or manually triggered only.
   {
     name: 'critical alert → ops-investigator',
     agentName: 'ops-investigator',
