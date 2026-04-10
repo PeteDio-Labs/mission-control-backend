@@ -73,13 +73,10 @@ describe('EventRouter', () => {
     );
   });
 
-  it('routes k8s deployment info event to blog-agent', async () => {
+  it('does not route k8s deployment events (blog-agent feedback loop removed)', async () => {
     await emit(makeEvent({ source: 'kubernetes', type: 'deployment', severity: 'info' }));
 
-    expect(mockEnqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ agentName: 'blog-agent', trigger: 'infra-event' }),
-      expect.anything(),
-    );
+    expect(mockEnqueue).not.toHaveBeenCalled();
   });
 
   it('routes argocd sync-drift to ops-investigator', async () => {
