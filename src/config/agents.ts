@@ -28,6 +28,14 @@ const KNOWLEDGE_JANITOR_URL =
   process.env.KNOWLEDGE_JANITOR_URL ||
   'http://192.168.50.113:3007';
 
+const WORKSTATION_AGENT_URL =
+  process.env.WORKSTATION_AGENT_URL ||
+  'http://192.168.50.113:3008';
+
+const INFRA_AGENT_URL =
+  process.env.INFRA_AGENT_URL ||
+  'http://192.168.50.113:3009';
+
 export const AGENT_REGISTRY: Record<string, AgentDefinition> = {
   'blog-agent': {
     name: 'blog-agent',
@@ -48,6 +56,16 @@ export const AGENT_REGISTRY: Record<string, AgentDefinition> = {
     name: 'knowledge-janitor',
     url: KNOWLEDGE_JANITOR_URL,
     description: 'Audits knowledge/ for stale docs, proposes cleanup, ingests to RAG',
+  },
+  'workstation-agent': {
+    name: 'workstation-agent',
+    url: WORKSTATION_AGENT_URL,
+    description: 'Executes shell commands, manages files, runs git/bun/kubectl ops on LXC 113',
+  },
+  'infra-agent': {
+    name: 'infra-agent',
+    url: INFRA_AGENT_URL,
+    description: 'Runs Ansible playbooks and checks Proxmox capacity',
   },
 };
 
