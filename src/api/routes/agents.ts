@@ -31,6 +31,7 @@ import {
   listLatestByAgent,
 } from '../../services/agentStore.js';
 import { logger } from '../../utils/logger.js';
+import { eventBus } from './events.js';
 import type { TaskQueue } from '../../services/taskQueue.js';
 import type { HealthChecker } from '../../services/healthChecker.js';
 
@@ -164,6 +165,18 @@ router.post('/:taskId/result', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Run not found', taskId: req.params.taskId });
       return;
     }
+
+    // Emit to SSE bus so Pete Bot relays the result to Discord
+    eventBus.emit('event', {
+      source: 'agent',
+      type: 'agent-complete',
+      severity: parsed.data.status === 'failed' ? 'warning' : 'info',
+      message: `[${run.agent_name}] ${parsed.data.summary ?? parsed.data.status}`,
+      affected_service: run.agent_name,
+      timestamp: new Date().toISOString(),
+      metadata: { taskId: run.task_id, status: parsed.data.status },
+    });
+
     res.json({ taskId: run.task_id, status: run.status, completedAt: run.completed_at });
   } catch (err) {
     logger.error('POST /agents/:taskId/result failed', { error: (err as Error).message });
