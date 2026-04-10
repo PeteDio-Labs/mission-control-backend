@@ -55,6 +55,19 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// ─── GET /agents/queue — queued + running tasks ──────────────────
+
+router.get('/queue', async (_req: Request, res: Response) => {
+  try {
+    const runs = await listRuns({ limit: 100 });
+    const queue = runs.filter(r => r.status === 'queued' || r.status === 'running');
+    res.json({ queue });
+  } catch (err) {
+    logger.error('GET /agents/queue failed', { error: (err as Error).message });
+    res.status(500).json({ error: 'Failed to fetch queue' });
+  }
+});
+
 // ─── GET /agents/history — paginated run history ─────────────────
 
 router.get('/history', async (req: Request, res: Response) => {
