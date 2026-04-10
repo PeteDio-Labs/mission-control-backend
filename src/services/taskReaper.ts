@@ -69,11 +69,11 @@ export class TaskReaper {
 
     const stale = await this.dbClient.queryMany<{ task_id: string; agent_name: string }>(
       `UPDATE agent_runs
-       SET status       = 'failed',
+       SET status       = 'dead-letter',
            locked_by    = NULL,
            locked_at    = NULL,
            completed_at = NOW(),
-           summary      = 'Task timed out (no heartbeat)'
+           summary      = 'Task reaped: no heartbeat within stale TTL'
        WHERE status = 'running'
          AND (
            (timeout_at IS NOT NULL AND timeout_at < NOW())
