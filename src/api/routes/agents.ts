@@ -10,6 +10,8 @@
  * GET    /api/v1/agents/:taskId      — fetch single run
  * POST   /api/v1/agents/:taskId/status  — agent reports status update
  * POST   /api/v1/agents/:taskId/result  — agent reports final result + artifacts
+ * POST   /api/v1/agents/:taskId/approval — agent registers approval request (reporter protocol)
+ * GET    /api/v1/agents/:taskId/approval — agent polls for outcome (reporter protocol)
  * POST   /api/v1/agents/:taskId/approve — human approves a gated action
  * POST   /api/v1/agents/:taskId/reject  — human rejects a gated action
  */
@@ -194,6 +196,59 @@ router.post('/:taskId/result', async (req: Request, res: Response) => {
   } catch (err) {
     logger.error('POST /agents/:taskId/result failed', { error: (err as Error).message });
     res.status(500).json({ error: 'Failed to record result' });
+  }
+});
+
+// ─── POST /agents/:taskId/approval — agent registers approval request ──
+// The shared reporter POSTs here when a gated action needs human sign-off.
+// It's equivalent to a status update with status=waiting_approval; the
+// pending_approval payload is already captured by the preceding /status call,
+// so we just acknowledge it here.
+
+router.post('/:taskId/approval', async (req: Request, res: Response) => {
+  try {
+    const run = await getRun(req.params.taskId!);
+    if (!run) {
+      res.status(404).json({ error: 'Run not found', taskId: req.params.taskId });
+      return;
+    }
+    // outcome is unknown — still pending
+    res.json({ taskId: run.task_id, outcome: null, status: run.status });
+  } catch (err) {
+    logger.error('POST /agents/:taskId/approval failed', { error: (err as Error).message });
+    res.status(500).json({ error: 'Failed to register approval request' });
+  }
+});
+
+// ─── GET /agents/:taskId/approval — agent polls for approval outcome ──
+// Returns { outcome: 'approved'|'rejected'|null, reason? }.
+// outcome is non-null once a human has called /approve or /reject.
+
+router.get('/:taskId/approval', async (req: Request, res: Response) => {
+  try {
+    const run = await getRun(req.params.taskId!);
+    if (!run) {
+      res.status(404).json({ error: 'Run not found', taskId: req.params.taskId });
+      return;
+    }
+    if (run.status === 'waiting_approval') {
+      // Still waiting — return null outcome so reporter keeps polling
+      res.json({ outcome: null });
+      return;
+    }
+    if (run.status === 'running') {
+      res.json({ outcome: 'approved' });
+      return;
+    }
+    if (run.status === 'failed') {
+      res.json({ outcome: 'rejected', reason: 'Rejected by operator' });
+      return;
+    }
+    // Any other terminal state — treat as rejected
+    res.json({ outcome: 'rejected', reason: `Task is ${run.status}` });
+  } catch (err) {
+    logger.error('GET /agents/:taskId/approval failed', { error: (err as Error).message });
+    res.status(500).json({ error: 'Failed to fetch approval status' });
   }
 });
 
