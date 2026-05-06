@@ -10,6 +10,7 @@ import { ProxmoxConnector } from '../../connectors/proxmox';
 import { NotificationClient } from '../../connectors/notification';
 import * as inventory from '../../db/inventory';
 import { logger } from '../../utils/logger';
+import { requireAdmin } from '../../middleware/auth';
 
 const router = Router();
 
@@ -309,7 +310,7 @@ router.get('/hosts', getHosts);
 router.get('/hosts/:id', getHostById);
 router.get('/workloads', getWorkloads);
 router.get('/workloads/:id', getWorkloadById);
-router.post('/sync', syncInventory);
-router.post('/refresh', refreshInventory);
+router.post('/sync', requireAdmin, syncInventory);
+router.post('/refresh', requireAdmin, refreshInventory);
 
 export default router;
