@@ -139,6 +139,34 @@ describe('authMiddleware', () => {
     expect(req.user).toBeUndefined();
   });
 
+  it('SECURITY: ignores MOCK_USER_EMAIL when NODE_ENV=production', () => {
+    // Audit finding S3.1 — without this guard, an env leak (configmap typo,
+    // Helm-values supply-chain compromise, accidental ops mistake) on the prod
+    // backend pod would auto-grant admin to any caller. The mock is dev-only.
+    process.env.NODE_ENV = 'production';
+    process.env.MOCK_USER_EMAIL = 'attacker@evil.test';
+    process.env.MOCK_USER_GROUPS = 'mc-admins';
+
+    const req = makeReq();
+    const { res, statusSpy, jsonSpy } = makeRes();
+    const next = vi.fn() as unknown as NextFunction;
+
+    try {
+      authMiddleware(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(statusSpy).toHaveBeenCalledWith(401);
+      expect(jsonSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ error: 'Unauthenticated' })
+      );
+      expect(req.user).toBeUndefined();
+    } finally {
+      delete process.env.NODE_ENV;
+      delete process.env.MOCK_USER_EMAIL;
+      delete process.env.MOCK_USER_GROUPS;
+    }
+  });
+
   it('derives name from email local-part when X-Forwarded-User missing', () => {
     const req = makeReq({
       headers: {

@@ -82,6 +82,14 @@ function userFromHeaders(req: Request): AuthenticatedUser | null {
 }
 
 function userFromMockEnv(): AuthenticatedUser | null {
+  // SECURITY: Mock auth is dev-only. If this fallback ran in production, anyone
+  // who could set MOCK_USER_EMAIL on the backend pod (configmap typo, supply-chain
+  // attack on Helm values, accidental env leak) would get auto-admin without
+  // touching oauth2-proxy. Wave 1 audit (2026-05-06, finding S3.1) flagged the
+  // unguarded version as HIGH severity. NODE_ENV=production is the deploy invariant
+  // that prevents this mock from being a backdoor.
+  if (process.env.NODE_ENV === 'production') return null;
+
   const email = process.env.MOCK_USER_EMAIL;
   if (!email) return null;
 
