@@ -7,6 +7,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { ProxmoxConnector } from '../../connectors/proxmox';
 import { NotificationClient } from '../../connectors/notification';
 import { logger } from '../../utils/logger';
+import { requireAdmin } from '../../middleware/auth';
 
 function publishProxmoxEvent(
   req: Request,
@@ -364,12 +365,12 @@ router.get('/nodes/:node/status', getNodeStatus);
 router.get('/nodes/:node/vms', getVMs);
 router.get('/nodes/:node/lxc', getLXCs);
 
-// Mutations (SAFE_MUTATE)
-router.post('/nodes/:node/vms/:vmid/start', startVM);
-router.post('/nodes/:node/vms/:vmid/stop', stopVM);
-router.post('/nodes/:node/vms/:vmid/restart', restartVM);
-router.post('/nodes/:node/lxc/:vmid/start', startLXC);
-router.post('/nodes/:node/lxc/:vmid/stop', stopLXC);
-router.post('/nodes/:node/lxc/:vmid/restart', restartLXC);
+// Mutations (SAFE_MUTATE) — admin-only
+router.post('/nodes/:node/vms/:vmid/start', requireAdmin, startVM);
+router.post('/nodes/:node/vms/:vmid/stop', requireAdmin, stopVM);
+router.post('/nodes/:node/vms/:vmid/restart', requireAdmin, restartVM);
+router.post('/nodes/:node/lxc/:vmid/start', requireAdmin, startLXC);
+router.post('/nodes/:node/lxc/:vmid/stop', requireAdmin, stopLXC);
+router.post('/nodes/:node/lxc/:vmid/restart', requireAdmin, restartLXC);
 
 export default router;

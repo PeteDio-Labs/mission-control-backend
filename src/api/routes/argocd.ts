@@ -7,6 +7,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { ArgoCDConnector } from '../../connectors/argocd';
 import { NotificationClient } from '../../connectors/notification';
 import { logger } from '../../utils/logger';
+import { requireAdmin } from '../../middleware/auth';
 
 const router = Router();
 
@@ -187,7 +188,7 @@ router.get('/status', getStatus);
 router.get('/applications', getAllAppStatuses);
 router.get('/applications/:name', getAppStatus);
 router.get('/applications/:name/history', getAppHistory);
-router.post('/applications/:name/sync', syncApp);
-router.post('/applications/:name/refresh', refreshApp);
+router.post('/applications/:name/sync', requireAdmin, syncApp);
+router.post('/applications/:name/refresh', requireAdmin, refreshApp);
 
 export default router;

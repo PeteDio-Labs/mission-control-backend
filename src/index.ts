@@ -6,7 +6,6 @@ import { ProxmoxConnector } from './connectors/proxmox';
 import { ArgoCDConnector } from './connectors/argocd';
 import { PrometheusConnector } from './connectors/prometheus';
 import { NotificationClient } from './connectors/notification';
-import { QBittorrentConnector } from './connectors/qbittorrent';
 import { DeployWatcher } from './services/deployWatcher';
 import { EventRouter } from './services/eventRouter';
 import { CronRunner } from './services/cronRunner';
@@ -95,22 +94,6 @@ async function startServer() {
       }
     } else {
       logger.info('ℹ️ Prometheus connector skipped (missing configuration)');
-    }
-
-    // Initialize qBittorrent connector (optional)
-    if (QBittorrentConnector.isConfigured()) {
-      const qbittorrentConnector = new QBittorrentConnector();
-      const connected = await qbittorrentConnector.testConnection();
-      if (connected) {
-        app.locals.qbittorrentConnector = qbittorrentConnector;
-        logger.info('✅ qBittorrent connector initialized');
-      } else {
-        // Still store it — torrents will be available when qBit comes up
-        app.locals.qbittorrentConnector = qbittorrentConnector;
-        logger.warn('⚠️ qBittorrent not reachable (will retry on request)');
-      }
-    } else {
-      logger.info('ℹ️ qBittorrent connector skipped (QBIT_HOST not set)');
     }
 
     // Initialize Notification Service client (optional)

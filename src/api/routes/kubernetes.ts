@@ -7,6 +7,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { KubernetesConnector } from '../../connectors/kubernetes';
 import { NotificationClient } from '../../connectors/notification';
 import { logger } from '../../utils/logger';
+import { requireAdmin } from '../../middleware/auth';
 
 const router = Router();
 
@@ -110,7 +111,7 @@ export async function getStatus(
 // ============================================================================
 
 router.get('/status', getStatus);
-router.post('/deployments/:namespace/:name/restart', restartDeployment);
+router.post('/deployments/:namespace/:name/restart', requireAdmin, restartDeployment);
 router.get('/pods/:namespace/:name/logs', getPodLogs);
 
 export default router;

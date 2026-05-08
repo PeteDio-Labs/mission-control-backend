@@ -36,12 +36,13 @@ import { logger } from '../../utils/logger.js';
 import { eventBus } from './events.js';
 import type { TaskQueue } from '../../services/taskQueue.js';
 import type { HealthChecker } from '../../services/healthChecker.js';
+import { authMiddleware, requireAdmin } from '../../middleware/auth.js';
 
 const router = Router();
 
 // ─── GET /agents — live status panel (one row per agent name) ────
 
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', authMiddleware, async (req: Request, res: Response) => {
   try {
     const rows = await listLatestByAgent();
     const healthChecker = req.app.locals.healthChecker as HealthChecker | undefined;
@@ -59,7 +60,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 // ─── GET /agents/queue — queued + running tasks ──────────────────
 
-router.get('/queue', async (_req: Request, res: Response) => {
+router.get('/queue', authMiddleware, async (_req: Request, res: Response) => {
   try {
     const runs = await listRuns({ limit: 100 });
     const queue = runs.filter(r => r.status === 'queued' || r.status === 'running');
@@ -72,7 +73,7 @@ router.get('/queue', async (_req: Request, res: Response) => {
 
 // ─── GET /agents/history — paginated run history ─────────────────
 
-router.get('/history', async (req: Request, res: Response) => {
+router.get('/history', authMiddleware, async (req: Request, res: Response) => {
   const QuerySchema = z.object({
     limit: z.coerce.number().min(1).max(200).default(50),
     offset: z.coerce.number().min(0).default(0),
@@ -146,7 +147,7 @@ router.get('/:taskId/approval', async (req: Request, res: Response) => {
 
 // ─── GET /agents/:taskId — single run ───────────────────────────
 
-router.get('/:taskId', async (req: Request, res: Response) => {
+router.get('/:taskId', authMiddleware, async (req: Request, res: Response) => {
   try {
     const run = await getRun(req.params.taskId!);
     if (!run) {
@@ -162,7 +163,7 @@ router.get('/:taskId', async (req: Request, res: Response) => {
 
 // ─── POST /agents/:name/trigger — dispatch an agent ─────────────
 
-router.post('/:name/trigger', async (req: Request, res: Response) => {
+router.post('/:name/trigger', authMiddleware, requireAdmin, async (req: Request, res: Response) => {
   const agentName = req.params.name!;
   const payload = {
     taskId: randomUUID(),
@@ -253,7 +254,7 @@ router.post('/:taskId/result', async (req: Request, res: Response) => {
 
 // ─── POST /agents/:taskId/approve ────────────────────────────────
 
-router.post('/:taskId/approve', async (req: Request, res: Response) => {
+router.post('/:taskId/approve', authMiddleware, requireAdmin, async (req: Request, res: Response) => {
   try {
     const run = await resolveApproval(req.params.taskId!, 'approved');
     if (!run) {
@@ -270,7 +271,7 @@ router.post('/:taskId/approve', async (req: Request, res: Response) => {
 
 // ─── POST /agents/:taskId/reject ─────────────────────────────────
 
-router.post('/:taskId/reject', async (req: Request, res: Response) => {
+router.post('/:taskId/reject', authMiddleware, requireAdmin, async (req: Request, res: Response) => {
   try {
     const run = await resolveApproval(req.params.taskId!, 'rejected');
     if (!run) {

@@ -17,12 +17,18 @@ async function getMockedInventory() {
 }
 
 describe('App route mounting', () => {
-  it('GET /api/v1/inventory responds with 200', async () => {
+  it('GET /api/v1/inventory responds with 200 when authenticated', async () => {
     const inventory = await getMockedInventory();
     inventory.getHosts.mockResolvedValue([]);
     inventory.getWorkloads.mockResolvedValue([]);
 
-    const response = await request(app).get('/api/v1/inventory');
+    // Auth middleware requires either oauth2-proxy headers or MOCK_USER_EMAIL
+    // env. Simulate the production header path here.
+    const response = await request(app)
+      .get('/api/v1/inventory')
+      .set('X-Forwarded-Email', 'test@example.com')
+      .set('X-Forwarded-User', 'test')
+      .set('X-Forwarded-Groups', 'mc-admins');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
@@ -31,5 +37,10 @@ describe('App route mounting', () => {
         workloads: [],
       },
     });
+  });
+
+  it('GET /api/v1/inventory returns 401 without auth headers', async () => {
+    const response = await request(app).get('/api/v1/inventory');
+    expect(response.status).toBe(401);
   });
 });
