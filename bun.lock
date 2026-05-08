@@ -146,7 +146,7 @@
 
     "@paralleldrive/cuid2": ["@paralleldrive/cuid2@2.3.1", "", { "dependencies": { "@noble/hashes": "^1.1.5" } }, "sha512-XO7cAxhnTZl0Yggq6jOgjiOHhbgcO4NqFqwSmQpjK3b6TEE6Uj/jfSk6wzYyemh3+I0sHirKSetjQwn5cZktFw=="],
 
-    "@petedio/shared": ["@petedio/shared@1.0.2", "https://registry.toastedbytes.com/repository/npm-group/@petedio/shared/-/shared-1.0.2.tgz", { "dependencies": { "zod": "^4.3.6" } }, "sha512-u5Nr7A2qmIVuJ7NZ+D98tr+FV/ydgpC8EuRNe6sBIUVC+8rw99F1BWoxInq27uO0Zkaq7Yfd0hwEYZGUzYi2GQ=="],
+    "@petedio/shared": ["@petedio/shared@1.0.2", "https://registry.pdlab.dev/repository/npm-group/@petedio/shared/-/shared-1.0.2.tgz", { "dependencies": { "zod": "^4.3.6" } }, "sha512-u5Nr7A2qmIVuJ7NZ+D98tr+FV/ydgpC8EuRNe6sBIUVC+8rw99F1BWoxInq27uO0Zkaq7Yfd0hwEYZGUzYi2GQ=="],
 
     "@polka/url": ["@polka/url@1.0.0-next.29", "", {}, "sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww=="],
 
