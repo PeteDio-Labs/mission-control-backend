@@ -11,7 +11,7 @@ on:
       - develop
 
 env:
-  NEXUS_REGISTRY: docker.toastedbytes.com
+  NEXUS_REGISTRY: docker.pdlab.dev
   IMAGE_NAME: mission-control-backend
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          echo "//registry.toastedbytes.com/repository/npm-group/:_auth=${{ secrets.NEXUS_NPM_TOKEN }}" >> .npmrc
+          echo "//registry.pdlab.dev/repository/npm-group/:_auth=${{ secrets.NEXUS_NPM_TOKEN }}" >> .npmrc
           bun install --frozen-lockfile
           sed -i '/_auth=/d' .npmrc
 
@@ -78,7 +78,7 @@ jobs:
             ${{ env.NEXUS_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
             ${{ env.NEXUS_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           secrets: |
-            npmrc_auth=//registry.toastedbytes.com/repository/npm-group/:_auth=${{ secrets.NEXUS_NPM_TOKEN }}
+            npmrc_auth=//registry.pdlab.dev/repository/npm-group/:_auth=${{ secrets.NEXUS_NPM_TOKEN }}
 
       - name: Summary
         if: github.event_name == 'push'
