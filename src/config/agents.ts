@@ -20,10 +20,6 @@ const OPS_INVESTIGATOR_URL =
   process.env.OPS_INVESTIGATOR_URL ||
   'http://192.168.50.113:3005';
 
-const PM_AGENT_URL =
-  process.env.PM_AGENT_URL ||
-  'http://192.168.50.113:3006';
-
 const KNOWLEDGE_JANITOR_URL =
   process.env.KNOWLEDGE_JANITOR_URL ||
   'http://192.168.50.113:3007';
@@ -46,11 +42,6 @@ export const AGENT_REGISTRY: Record<string, AgentDefinition> = {
     name: 'ops-investigator',
     url: OPS_INVESTIGATOR_URL,
     description: 'Investigates infra alerts and pod failures',
-  },
-  'pm-agent': {
-    name: 'pm-agent',
-    url: PM_AGENT_URL,
-    description: 'Manages project tasks and planning documents',
   },
   'knowledge-janitor': {
     name: 'knowledge-janitor',

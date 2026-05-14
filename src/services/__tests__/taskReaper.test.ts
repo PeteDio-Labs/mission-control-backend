@@ -70,7 +70,7 @@ describe('TaskReaper', () => {
   it('returns expired count for stale approval tasks', async () => {
     mockQueryMany
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ task_id: 'task-2', agent_name: 'pm-agent' }]);
+      .mockResolvedValueOnce([{ task_id: 'task-2', agent_name: 'knowledge-janitor' }]);
     const result = await reaper.reap();
     expect(result.expired).toBe(1);
   });

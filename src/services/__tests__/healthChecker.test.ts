@@ -7,7 +7,7 @@ const { HealthChecker } = await import('../healthChecker.js');
 
 const agents: AgentDefinition[] = [
   { name: 'ops-investigator', url: 'http://192.168.50.113:3005', description: 'test' },
-  { name: 'pm-agent', url: 'http://192.168.50.113:3006', description: 'test' },
+  { name: 'knowledge-janitor', url: 'http://192.168.50.113:3007', description: 'test' },
 ];
 
 // ─── Tests ────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ describe('HealthChecker', () => {
       expect.anything(),
     );
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://192.168.50.113:3006/health',
+      'http://192.168.50.113:3007/health',
       expect.anything(),
     );
   });
@@ -96,7 +96,7 @@ describe('HealthChecker', () => {
     await checker.check();
     const health = checker.getAllHealth();
     expect(Object.keys(health)).toContain('ops-investigator');
-    expect(Object.keys(health)).toContain('pm-agent');
+    expect(Object.keys(health)).toContain('knowledge-janitor');
   });
 
   it('check() stores checkedAt timestamp', async () => {
