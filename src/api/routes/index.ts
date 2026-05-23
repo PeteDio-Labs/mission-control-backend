@@ -25,6 +25,9 @@ import kubernetesRouter from './kubernetes';
 import agentsRouter from './agents';
 import githubRouter from './github';
 import meRouter from './me';
+import plansRouter from './plans';
+import discordRouter from './discord';
+import alertmanagerRouter from './alertmanager';
 import { authMiddleware } from '../../middleware/auth';
 
 const routes = Router();
@@ -42,6 +45,16 @@ const apiV1Router = Router();
 apiV1Router.use('/agents', agentsRouter);
 apiV1Router.use('/events', eventsRouter);
 apiV1Router.use('/github/webhook', githubRouter);
+
+// PB.13: Alertmanager webhook → Plan service. External sender, no user;
+// optional Bearer auth via ALERTMANAGER_WEBHOOK_TOKEN handled per-route.
+apiV1Router.use('/alerts/alertmanager', alertmanagerRouter);
+
+// Pete Bot v2 (PB.3): /plans mixes agent-callbacks (POST, PATCH /:id/status)
+// with user-facing GETs — per-route authMiddleware inside plansRouter.
+// /discord/callback uses HMAC auth (Pete Bot is the trusted client).
+apiV1Router.use('/plans', plansRouter);
+apiV1Router.use('/discord', discordRouter);
 
 // Everything below this line is gated by authMiddleware (sets req.user from
 // oauth2-proxy headers or MOCK_USER_EMAIL fallback).

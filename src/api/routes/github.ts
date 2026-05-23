@@ -131,9 +131,17 @@ router.post('/', async (req: Request, res: Response) => {
   const secret = process.env.GITHUB_WEBHOOK_SECRET;
   const signature = req.headers['x-hub-signature-256'] as string | undefined;
   const event = req.headers['x-github-event'] as string | undefined;
-  const rawBody = JSON.stringify(req.body); // body already parsed by express
+  // RETRO.13: use rawBody captured by express.json({verify}) — JSON.stringify
+  // is NOT byte-equivalent to what GitHub signed, so signature verify was
+  // unreliable. Missing rawBody = server misconfigured (verify cb never fired).
+  const rawBody = (req as Request & { rawBody?: string }).rawBody;
 
   if (secret) {
+    if (rawBody === undefined) {
+      logger.error('GitHub webhook: rawBody missing — express.json verify middleware not wired');
+      res.status(500).json({ error: 'Server misconfigured (rawBody)' });
+      return;
+    }
     if (!verifySignature(rawBody, signature, secret)) {
       logger.warn('GitHub webhook: invalid signature');
       res.status(401).json({ error: 'Invalid signature' });
