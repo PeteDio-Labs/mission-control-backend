@@ -10,10 +10,11 @@
  * Auth model:
  *   - Mounted BEFORE the global authMiddleware (sibling to /github/webhook)
  *     because Alertmanager is an external sender that doesn't have a user.
- *   - If ALERTMANAGER_WEBHOOK_TOKEN env is set, require
- *     `Authorization: Bearer <token>` (constant-time compare).
- *     If unset, log a warning at boot and accept the request (matches the
- *     GITHUB_WEBHOOK_SECRET pattern).
+ *   - Requires `Authorization: Bearer ${ALERTMANAGER_WEBHOOK_TOKEN}`
+ *     (constant-time compare). Presence of the env var is guaranteed by the
+ *     boot validator in `src/config/requiredSecrets.ts` (SEC.1 / C2) — a
+ *     missing value crashes the pod at startup rather than accepting unauthed
+ *     traffic.
  *
  * Idempotency:
  *   - Each Alertmanager alert has a stable `fingerprint`. Before creating a
@@ -46,14 +47,9 @@ import { postEditMessage } from '../../services/notifications/peteBotClient.js';
 
 const router = Router();
 
+// Boot validator (src/config/requiredSecrets.ts) guarantees this is set.
 const WEBHOOK_TOKEN = process.env.ALERTMANAGER_WEBHOOK_TOKEN ?? '';
 const DEFAULT_EXPIRES_MS = 24 * 60 * 60 * 1000; // 24h
-
-if (!WEBHOOK_TOKEN) {
-  logger.warn(
-    'Alertmanager webhook: ALERTMANAGER_WEBHOOK_TOKEN not set — accepting requests without bearer auth',
-  );
-}
 
 // ─── Zod schema for Alertmanager v4 payload ──────────────────────────
 
@@ -83,16 +79,18 @@ type AlertmanagerAlert = z.infer<typeof AlertSchema>;
 
 // ─── Auth helper ─────────────────────────────────────────────────────
 
-function verifyBearer(authHeader: string | undefined): boolean {
-  if (!WEBHOOK_TOKEN) return true; // open mode (warned at boot)
+export function verifyBearer(
+  authHeader: string | undefined,
+  expectedToken: string = WEBHOOK_TOKEN,
+): boolean {
+  if (!expectedToken) return false;
   if (!authHeader || !authHeader.startsWith('Bearer ')) return false;
   const provided = authHeader.slice('Bearer '.length).trim();
-  const expected = WEBHOOK_TOKEN;
   // constant-time compare; Buffer.from on mismatched lengths still throws,
   // so guard length first to avoid leaking via exception path.
-  if (provided.length !== expected.length) return false;
+  if (provided.length !== expectedToken.length) return false;
   try {
-    return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+    return timingSafeEqual(Buffer.from(provided), Buffer.from(expectedToken));
   } catch {
     return false;
   }

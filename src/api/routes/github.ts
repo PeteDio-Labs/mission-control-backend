@@ -9,8 +9,11 @@
  *   issues.opened (label: agent:ops)     → ops-investigator
  *   push (to main/develop)               → blog-agent (deploy-changelog)
  *
- * Set GITHUB_WEBHOOK_SECRET in env to enable signature validation.
- * Without it, webhooks are accepted but a warning is logged.
+ * Requires `X-Hub-Signature-256` HMAC-SHA256 signature over the raw body
+ * using `GITHUB_WEBHOOK_SECRET`. Presence of the env var is guaranteed by
+ * the boot validator in `src/config/requiredSecrets.ts` (SEC.1 / C2) — a
+ * missing value crashes the pod at startup rather than accepting unauthed
+ * webhooks.
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -25,9 +28,15 @@ const router = Router();
 
 // ─── Signature validation ─────────────────────────────────────────
 
-function verifySignature(payload: string, signature: string | undefined, secret: string): boolean {
+export function verifySignature(
+  payload: string,
+  signature: string | undefined,
+  secret: string,
+): boolean {
+  if (!secret) return false;
   if (!signature) return false;
   const expected = `sha256=${createHmac('sha256', secret).update(payload).digest('hex')}`;
+  if (signature.length !== expected.length) return false;
   try {
     return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
   } catch {
@@ -128,7 +137,8 @@ async function handlePush(push: GitHubPush): Promise<string | null> {
 // ─── Route ────────────────────────────────────────────────────────
 
 router.post('/', async (req: Request, res: Response) => {
-  const secret = process.env.GITHUB_WEBHOOK_SECRET;
+  // Boot validator (src/config/requiredSecrets.ts) guarantees this is set.
+  const secret = process.env.GITHUB_WEBHOOK_SECRET ?? '';
   const signature = req.headers['x-hub-signature-256'] as string | undefined;
   const event = req.headers['x-github-event'] as string | undefined;
   // RETRO.13: use rawBody captured by express.json({verify}) — JSON.stringify
@@ -136,19 +146,15 @@ router.post('/', async (req: Request, res: Response) => {
   // unreliable. Missing rawBody = server misconfigured (verify cb never fired).
   const rawBody = (req as Request & { rawBody?: string }).rawBody;
 
-  if (secret) {
-    if (rawBody === undefined) {
-      logger.error('GitHub webhook: rawBody missing — express.json verify middleware not wired');
-      res.status(500).json({ error: 'Server misconfigured (rawBody)' });
-      return;
-    }
-    if (!verifySignature(rawBody, signature, secret)) {
-      logger.warn('GitHub webhook: invalid signature');
-      res.status(401).json({ error: 'Invalid signature' });
-      return;
-    }
-  } else {
-    logger.warn('GitHub webhook: GITHUB_WEBHOOK_SECRET not set — accepting without verification');
+  if (rawBody === undefined) {
+    logger.error('GitHub webhook: rawBody missing — express.json verify middleware not wired');
+    res.status(500).json({ error: 'Server misconfigured (rawBody)' });
+    return;
+  }
+  if (!verifySignature(rawBody, signature, secret)) {
+    logger.warn('GitHub webhook: invalid or missing signature');
+    res.status(401).json({ error: 'Invalid signature' });
+    return;
   }
 
   if (!event) {

@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { logger } from './utils/logger';
+import { assertRequiredSecrets, MissingRequiredSecretsError } from './config/requiredSecrets';
 import { db } from './db/client';
 import { KubernetesConnector } from './connectors/kubernetes';
 import { ProxmoxConnector } from './connectors/proxmox';
@@ -25,6 +26,25 @@ import {
 
 // Load environment variables
 dotenv.config();
+
+// SEC.1 / C2 — fail closed if webhook auth secrets are missing. Must run
+// before any service init so an unconfigured deploy crashes the pod instead
+// of starting a silently-open webhook receiver.
+try {
+  assertRequiredSecrets();
+} catch (err) {
+  if (err instanceof MissingRequiredSecretsError) {
+    logger.error('FATAL: required secrets missing at boot', {
+      missing: err.missing,
+      message: err.message,
+    });
+  } else {
+    logger.error('FATAL: required-secrets validation failed', {
+      error: (err as Error).message,
+    });
+  }
+  process.exit(1);
+}
 
 const PORT = process.env.PORT || 3000;
 
