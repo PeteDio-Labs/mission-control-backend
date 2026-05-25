@@ -148,6 +148,15 @@ async function findOpenPlanByFingerprint(fingerprint: string): Promise<PlanRow |
 // ─── Handlers ────────────────────────────────────────────────────────
 
 async function handleFiring(alert: AlertmanagerAlert): Promise<'created' | 'skipped'> {
+  // RETRO.27 — dual-layer dedupe:
+  //   (1) JS-side fast path below: avoids an INSERT attempt when we already
+  //       know there's an active plan for this fingerprint.
+  //   (2) DB-side safety net (catch 23505 below): closes the TOCTOU race
+  //       window between this check and the INSERT, where two concurrent
+  //       webhooks for the same fingerprint can both see "no match" and
+  //       both call createPlan. The partial unique index installed by
+  //       migration 006 makes the second INSERT fail with unique_violation
+  //       which we treat as a skip.
   const existing = await findOpenPlanByFingerprint(alert.fingerprint);
   if (existing) {
     logger.info('Alertmanager firing: open plan already exists, skipping', {
@@ -171,25 +180,41 @@ async function handleFiring(alert: AlertmanagerAlert): Promise<'created' | 'skip
     alert.labels.alertname ||
     'Alertmanager alert';
 
-  const plan = await createPlan({
-    kind: 'alert',
-    severity,
-    source: 'alertmanager',
-    sourceMetadata: {
-      fingerprint: alert.fingerprint,
-      labels: alert.labels,
-      annotations: alert.annotations,
-      startsAt: alert.startsAt,
-      generatorURL: alert.generatorURL ?? null,
-    },
-    target: target ?? undefined,
-    summary,
-    actions: [
-      { actionId: 'ack', label: 'Acknowledge', style: 'primary' },
-      { actionId: 'snooze_1h', label: 'Snooze 1h', style: 'secondary' },
-    ],
-    expiresAt: new Date(Date.now() + DEFAULT_EXPIRES_MS),
-  });
+  let plan;
+  try {
+    plan = await createPlan({
+      kind: 'alert',
+      severity,
+      source: 'alertmanager',
+      sourceMetadata: {
+        fingerprint: alert.fingerprint,
+        labels: alert.labels,
+        annotations: alert.annotations,
+        startsAt: alert.startsAt,
+        generatorURL: alert.generatorURL ?? null,
+      },
+      target: target ?? undefined,
+      summary,
+      actions: [
+        { actionId: 'ack', label: 'Acknowledge', style: 'primary' },
+        { actionId: 'snooze_1h', label: 'Snooze 1h', style: 'secondary' },
+      ],
+      expiresAt: new Date(Date.now() + DEFAULT_EXPIRES_MS),
+    });
+  } catch (err) {
+    // RETRO.27 — DB-side dedupe: the partial unique index
+    // idx_plans_alertmanager_fingerprint_open (migration 006) raises
+    // Postgres 23505 unique_violation when a concurrent webhook beat us
+    // to the INSERT. Treat as a skip — the other call already created
+    // the plan and fired the notification.
+    if ((err as { code?: string }).code === '23505') {
+      logger.info('Alertmanager firing: deduped by DB unique index (concurrent webhook)', {
+        fingerprint: alert.fingerprint,
+      });
+      return 'skipped';
+    }
+    throw err;
+  }
 
   // RETRO.17: fire-and-forget notify (same pattern as plans.ts POST /)
   notifyPlan(plan).catch((err) => {

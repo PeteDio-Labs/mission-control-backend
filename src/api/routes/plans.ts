@@ -273,6 +273,48 @@ router.get('/expired-presented', async (req: Request, res: Response) => {
   }
 });
 
+// ─── GET /plans/:id/agent-status — agent poll for plan progress (PB.10) ─
+// Agent-facing (no authMiddleware): in-cluster / cross-LAN call from cron
+// watchdogs that need to know whether their plan was clicked, dismissed,
+// or expired without exposing the full event timeline.
+//
+// Returns the minimum needed for a polling agent:
+//   - status              — current plan status (presented/clicked/expired/…)
+//   - lastClickedActionId — the actionId the user picked (null until clicked)
+//   - actedBy             — who clicked (audit)
+//   - updatedAt/closedAt  — for clients that want to detect change
+//
+// Mounted ABOVE the auth-gated `GET /` (and ABOVE the param route
+// `GET /:id`) so it bypasses authMiddleware. Pattern matches the other
+// agent-facing routes (POST `/`, PATCH `/:id/status`, POST `/:id/events`,
+// GET `/expired-presented`) declared earlier in this file.
+
+router.get('/:id/agent-status', async (req: Request, res: Response) => {
+  try {
+    const plan = await getPlan(req.params.id!);
+    if (!plan) {
+      res.status(404).json({ error: 'Plan not found', planId: req.params.id });
+      return;
+    }
+    const actions = await getPlanActions(plan.id);
+    const claimed = actions.find((a) => a.acted_at !== null);
+    res.json({
+      planId: plan.id,
+      status: plan.status,
+      lastClickedActionId: claimed?.action_id ?? null,
+      actedBy: claimed?.acted_by_user ?? null,
+      updatedAt: plan.updated_at,
+      closedAt: plan.closed_at,
+    });
+  } catch (err) {
+    logger.error('GET /plans/:id/agent-status failed', {
+      planId: req.params.id,
+      error: (err as Error).message,
+    });
+    res.status(500).json({ error: 'Failed to fetch agent status' });
+  }
+});
+
 // ─── GET /plans — list (user-facing, auth required) ──────────────────
 
 router.get('/', authMiddleware, async (req: Request, res: Response) => {

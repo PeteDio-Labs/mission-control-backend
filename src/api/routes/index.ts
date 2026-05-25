@@ -28,6 +28,8 @@ import meRouter from './me';
 import plansRouter from './plans';
 import discordRouter from './discord';
 import alertmanagerRouter from './alertmanager';
+import settingsRouter from './settings';
+import discordIdentitiesRouter from './discord-identities';
 import { authMiddleware } from '../../middleware/auth';
 
 const routes = Router();
@@ -66,6 +68,11 @@ apiV1Router.use('/proxmox', proxmoxRouter);
 apiV1Router.use('/argocd', argoCDRouter);
 apiV1Router.use('/prometheus', prometheusRouter);
 apiV1Router.use('/kubernetes', kubernetesRouter);
+
+// PB.12 — MC Settings UI surfaces. Read endpoints are auth-only; mutating
+// endpoints add requireAdmin per-route inside each router.
+apiV1Router.use('/settings', settingsRouter);
+apiV1Router.use('/discord-identities', discordIdentitiesRouter);
 
 routes.use('/api/v1', apiV1Router);
 
