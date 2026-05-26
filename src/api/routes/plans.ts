@@ -82,6 +82,8 @@ const CreatePlanBodySchema = z.object({
   }).optional(),
   actions: z.array(ActionInputSchema).min(1).max(8),
   expiresInSeconds: z.number().int().min(60).max(7 * 24 * 60 * 60).optional(),
+  /** Link to a Roadmap Task (migration 008). Optional. */
+  roadmapTaskId: z.string().min(1).max(64).regex(/^[A-Za-z0-9._-]+$/).optional(),
 });
 
 const TransitionStatusBodySchema = z.object({
@@ -323,6 +325,8 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
     kind: z.union([PlanKindSchema, z.array(PlanKindSchema)]).optional(),
     source: SourceSchema.optional(),
     active: z.coerce.boolean().optional(),
+    /** Filter to plans linked to a specific Roadmap Task (e.g. 'PB.10'). */
+    roadmapTaskId: z.string().min(1).max(64).regex(/^[A-Za-z0-9._-]+$/).optional(),
     limit: z.coerce.number().int().min(1).max(500).default(100),
     offset: z.coerce.number().int().min(0).default(0),
   });

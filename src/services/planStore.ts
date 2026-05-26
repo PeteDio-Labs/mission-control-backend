@@ -33,6 +33,7 @@
 import db from '../db/client.js';
 import { logger } from '../utils/logger.js';
 import { isValidTransition, type PlanStatus } from './plans/stateMachine.js';
+import { logEvent as logRoadmapEvent } from './roadmapStore.js';
 import type {
   PlanRow,
   PlanActionRow,
@@ -61,13 +62,13 @@ export async function createPlan(input: CreatePlanInput): Promise<PlanRow> {
   const planId = input.id ?? generatePlanId();
   const expiresAt = input.expiresAt ?? defaultExpiresAt();
 
-  return db.transaction(async (client) => {
+  const plan = await db.transaction(async (client) => {
     const planResult = await client.query<PlanRow>(
       `INSERT INTO plans (
          id, kind, status, severity, source, source_metadata,
-         target, summary, proposed_fix, expires_at
+         target, summary, proposed_fix, expires_at, roadmap_task_id
        )
-       VALUES ($1, $2, 'pending', $3, $4, $5::jsonb, $6, $7, $8::jsonb, $9)
+       VALUES ($1, $2, 'pending', $3, $4, $5::jsonb, $6, $7, $8::jsonb, $9, $10)
        RETURNING *`,
       [
         planId,
@@ -79,13 +80,14 @@ export async function createPlan(input: CreatePlanInput): Promise<PlanRow> {
         input.summary,
         input.proposedFix ? JSON.stringify(input.proposedFix) : null,
         expiresAt,
+        input.roadmapTaskId ?? null,
       ],
     );
-    const plan = planResult.rows[0];
+    const created = planResult.rows[0]!;
 
     // Insert plan_actions in display order
     for (let i = 0; i < input.actions.length; i++) {
-      const a = input.actions[i];
+      const a = input.actions[i]!;
       await client.query(
         `INSERT INTO plan_actions (plan_id, action_id, label, style, ordering, click_payload)
          VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
@@ -113,10 +115,37 @@ export async function createPlan(input: CreatePlanInput): Promise<PlanRow> {
       severity: input.severity ?? 'info',
       source: input.source,
       actionCount: input.actions.length,
+      roadmapTaskId: input.roadmapTaskId,
     });
 
-    return plan;
+    return created;
   });
+
+  // Mirror the link on the roadmap side as an audit event. Outside the plan
+  // transaction so a roadmap-side failure (e.g. invalid task ID — FK already
+  // rejected in the INSERT above, but a race could still slip past) doesn't
+  // roll back the plan insert. Best-effort; we log the failure and move on.
+  if (input.roadmapTaskId) {
+    logRoadmapEvent({
+      taskId: input.roadmapTaskId,
+      eventType: 'plan_linked',
+      actor: 'system',
+      detail: {
+        planId: plan.id,
+        kind: plan.kind,
+        severity: plan.severity,
+        summary: plan.summary,
+      },
+    }).catch((err) => {
+      logger.error('logRoadmapEvent(plan_linked) failed', {
+        planId: plan.id,
+        roadmapTaskId: input.roadmapTaskId,
+        error: (err as Error).message,
+      });
+    });
+  }
+
+  return plan;
 }
 
 // ─── Mark presented ──────────────────────────────────────────────────
@@ -364,6 +393,8 @@ export interface ListPlansOpts {
   kind?: PlanKind | PlanKind[];
   source?: PlanSource;
   active?: boolean;          // shortcut: status IN (pending,presented,clicked,dispatched,in_progress,stuck)
+  /** Filter to plans linked to a specific Roadmap Task (e.g. 'PB.10'). */
+  roadmapTaskId?: string;
   limit?: number;
   offset?: number;
 }
@@ -387,6 +418,10 @@ export async function listPlans(opts: ListPlansOpts = {}): Promise<PlanRow[]> {
   if (opts.source) {
     params.push(opts.source);
     conditions.push(`source = $${params.length}`);
+  }
+  if (opts.roadmapTaskId) {
+    params.push(opts.roadmapTaskId);
+    conditions.push(`roadmap_task_id = $${params.length}`);
   }
 
   const limit = opts.limit ?? 100;

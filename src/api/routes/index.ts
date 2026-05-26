@@ -30,6 +30,7 @@ import discordRouter from './discord';
 import alertmanagerRouter from './alertmanager';
 import settingsRouter from './settings';
 import discordIdentitiesRouter from './discord-identities';
+import roadmapRouter from './roadmap';
 import { authMiddleware } from '../../middleware/auth';
 
 const routes = Router();
@@ -73,6 +74,11 @@ apiV1Router.use('/kubernetes', kubernetesRouter);
 // endpoints add requireAdmin per-route inside each router.
 apiV1Router.use('/settings', settingsRouter);
 apiV1Router.use('/discord-identities', discordIdentitiesRouter);
+
+// Roadmap (kanban) — MC-managed master plan items. All routes require auth;
+// mutating routes additionally require requireAdmin (enforced inside the router).
+// Sibling to /plans but with a different lifecycle and admin-only model.
+apiV1Router.use('/roadmap', roadmapRouter);
 
 routes.use('/api/v1', apiV1Router);
 

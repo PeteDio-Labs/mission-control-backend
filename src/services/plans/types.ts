@@ -45,6 +45,8 @@ export interface PlanRow {
   proposals: StuckProposal[] | null;
   expires_at: string | null;
   closed_at: string | null;
+  /** Roadmap Task this plan belongs to. Migration 008. NULL = standalone plan. */
+  roadmap_task_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -120,6 +122,8 @@ export interface CreatePlanInput {
   proposedFix?: ProposedFix;
   actions: SuggestedAction[];
   expiresAt?: Date;
+  /** Link to a Roadmap Task. Migration 008. NULL = standalone plan. */
+  roadmapTaskId?: string;
 }
 
 export interface TransitionInput {
