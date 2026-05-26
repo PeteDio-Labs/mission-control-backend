@@ -119,29 +119,48 @@ export function verifyProxySignature(
 /**
  * Express middleware. Set req.proxyAuthVerified or 401.
  *
- * If AUTH_PROXY_HMAC_SECRET is missing:
- *   - in production: 500 (fail-closed; boot validation in app.ts should have
- *     caught this earlier, but defense in depth at the request edge too)
- *   - in dev: skip (req.proxyAuthVerified left undefined, MOCK path handles)
+ * HMAC verification is OPT-IN via `AUTH_PROXY_HMAC_ENABLED=true`. The
+ * rationale for opt-in: the initial production deploy uses oauth2-proxy +
+ * NetworkPolicy + ClusterIP as the primary security boundary. The HMAC
+ * adds a third belt-and-suspenders layer that needs a signer sidecar to
+ * compute + inject the signature header before forwarding to backend.
+ * Until that sidecar ships, HMAC stays off so production doesn't 401
+ * every request.
+ *
+ * Modes:
+ *   - AUTH_PROXY_HMAC_ENABLED=true + AUTH_PROXY_HMAC_SECRET set →
+ *     verify every request. 401 on missing/expired/mismatched.
+ *   - AUTH_PROXY_HMAC_ENABLED unset/false →
+ *     pass through (proxyAuthVerified left undefined). authMiddleware's
+ *     production header trust falls back to network-layer trust
+ *     (NetworkPolicy + ClusterIP gate the LAN; oauth2-proxy gates the
+ *     edge). When the signer sidecar lands, flip this flag on.
+ *   - production + ENABLED=true + missing secret →
+ *     boot crashes via assertProxyAuthConfigured(); at request time
+ *     this branch is unreachable.
  */
 export function proxyAuthMiddleware(
   req: Request,
   res: Response,
   next: NextFunction,
 ): void {
+  if (process.env.AUTH_PROXY_HMAC_ENABLED !== 'true') {
+    // HMAC disabled — skip. authMiddleware (next in chain) will still
+    // enforce header presence + the MOCK fallback gate.
+    next();
+    return;
+  }
+
   const secret = process.env.AUTH_PROXY_HMAC_SECRET;
 
   if (!secret) {
-    if (process.env.NODE_ENV === 'production') {
-      logger.error('proxyAuth: AUTH_PROXY_HMAC_SECRET missing in production');
-      res.status(500).json({
-        error: 'Internal Server Error',
-        message: 'Proxy auth secret not configured',
-      });
-      return;
-    }
-    // Dev: pass through, MOCK_USER_EMAIL path will handle auth.
-    next();
+    // Should be unreachable in production thanks to assertProxyAuthConfigured.
+    // In dev with HMAC_ENABLED=true but no secret, fail loudly.
+    logger.error('proxyAuth: AUTH_PROXY_HMAC_ENABLED=true but AUTH_PROXY_HMAC_SECRET missing');
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: 'Proxy auth secret not configured',
+    });
     return;
   }
 
@@ -177,16 +196,19 @@ export function proxyAuthMiddleware(
 }
 
 /**
- * Boot-time check — call from app.ts startup. Throws if production but no
- * secret is set, so the server refuses to start rather than silently
- * accepting un-verified headers.
+ * Boot-time check — call from app.ts startup. Throws ONLY if HMAC is
+ * opt-in enabled but the secret is missing. The "no-HMAC" mode (initial
+ * production deploy with oauth2-proxy + NetworkPolicy only) is a valid
+ * configuration and doesn't trip this.
  */
 export function assertProxyAuthConfigured(): void {
+  if (process.env.AUTH_PROXY_HMAC_ENABLED !== 'true') return;
   if (process.env.NODE_ENV !== 'production') return;
   if (!process.env.AUTH_PROXY_HMAC_SECRET) {
     throw new Error(
-      'AUTH_PROXY_HMAC_SECRET is required in production. Set it from the ' +
-        'oauth2-proxy-secrets SealedSecret. Refusing to boot.',
+      'AUTH_PROXY_HMAC_ENABLED=true but AUTH_PROXY_HMAC_SECRET is missing. ' +
+        'Set the secret from oauth2-proxy-secrets, or unset AUTH_PROXY_HMAC_ENABLED ' +
+        'if you intended to run without HMAC. Refusing to boot.',
     );
   }
 }

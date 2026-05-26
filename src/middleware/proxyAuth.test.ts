@@ -188,6 +188,7 @@ describe('proxyAuthMiddleware', () => {
   });
 
   it('sets req.proxyAuthVerified=true on valid signature', () => {
+    process.env.AUTH_PROXY_HMAC_ENABLED = 'true';
     process.env.AUTH_PROXY_HMAC_SECRET = SECRET;
     const { signature, timestamp, email, groups } = signRequest({ email: 'pedro@example.com' });
     const req = mockReq({
@@ -207,6 +208,7 @@ describe('proxyAuthMiddleware', () => {
   });
 
   it('401 on invalid signature', () => {
+    process.env.AUTH_PROXY_HMAC_ENABLED = 'true';
     process.env.AUTH_PROXY_HMAC_SECRET = SECRET;
     const req = mockReq({
       'X-Auth-Proxy-Signature': 'deadbeef'.repeat(8),
@@ -225,7 +227,8 @@ describe('proxyAuthMiddleware', () => {
     expect(json).toHaveBeenCalledWith(expect.objectContaining({ error: 'Unauthenticated' }));
   });
 
-  it('401 when no proxy headers and secret is configured', () => {
+  it('401 when no proxy headers and HMAC is enabled', () => {
+    process.env.AUTH_PROXY_HMAC_ENABLED = 'true';
     process.env.AUTH_PROXY_HMAC_SECRET = SECRET;
     const req = mockReq({});
     const { res, status } = mockRes();
@@ -237,8 +240,9 @@ describe('proxyAuthMiddleware', () => {
     expect(status).toHaveBeenCalledWith(401);
   });
 
-  it('passes through when secret is unset in dev', () => {
-    process.env.NODE_ENV = 'development';
+  it('passes through when HMAC is disabled (default)', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.AUTH_PROXY_HMAC_ENABLED;
     delete process.env.AUTH_PROXY_HMAC_SECRET;
     const req = mockReq({
       'X-Forwarded-Email': 'pedro@example.com',
@@ -253,8 +257,8 @@ describe('proxyAuthMiddleware', () => {
     expect(status).not.toHaveBeenCalled();
   });
 
-  it('500 when secret is unset in production', () => {
-    process.env.NODE_ENV = 'production';
+  it('500 when HMAC enabled but secret missing', () => {
+    process.env.AUTH_PROXY_HMAC_ENABLED = 'true';
     delete process.env.AUTH_PROXY_HMAC_SECRET;
     const req = mockReq({});
     const { res, status, json } = mockRes();
@@ -281,26 +285,30 @@ describe('assertProxyAuthConfigured', () => {
     process.env = originalEnv;
   });
 
-  it('throws when production without secret', () => {
+  it('throws when production with HMAC enabled but no secret', () => {
     process.env.NODE_ENV = 'production';
+    process.env.AUTH_PROXY_HMAC_ENABLED = 'true';
     delete process.env.AUTH_PROXY_HMAC_SECRET;
     expect(() => assertProxyAuthConfigured()).toThrow(/AUTH_PROXY_HMAC_SECRET/);
   });
 
-  it('does not throw when production with secret', () => {
+  it('does not throw when production with HMAC enabled + secret set', () => {
     process.env.NODE_ENV = 'production';
+    process.env.AUTH_PROXY_HMAC_ENABLED = 'true';
     process.env.AUTH_PROXY_HMAC_SECRET = SECRET;
     expect(() => assertProxyAuthConfigured()).not.toThrow();
   });
 
-  it('does not throw in development (secret optional)', () => {
-    process.env.NODE_ENV = 'development';
+  it('does not throw when HMAC disabled (default), even in production', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.AUTH_PROXY_HMAC_ENABLED;
     delete process.env.AUTH_PROXY_HMAC_SECRET;
     expect(() => assertProxyAuthConfigured()).not.toThrow();
   });
 
-  it('does not throw in test env', () => {
-    process.env.NODE_ENV = 'test';
+  it('does not throw in development', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.AUTH_PROXY_HMAC_ENABLED = 'true';
     delete process.env.AUTH_PROXY_HMAC_SECRET;
     expect(() => assertProxyAuthConfigured()).not.toThrow();
   });

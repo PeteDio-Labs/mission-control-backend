@@ -122,11 +122,19 @@ export function authMiddleware(
 ): void {
   const fromHeaders = userFromHeaders(req);
   if (fromHeaders) {
-    // SECURITY: in production, refuse to trust X-Forwarded-* headers unless
-    // the proxyAuth middleware verified the oauth2-proxy HMAC signature
-    // earlier in the chain. This protects against LAN clients that bypass
-    // oauth2-proxy (e.g. directly hitting a ClusterIP) and try to spoof.
-    if (process.env.NODE_ENV === 'production' && req.proxyAuthVerified !== true) {
+    // SECURITY: when AUTH_PROXY_HMAC_ENABLED=true, refuse to trust
+    // X-Forwarded-* headers unless the proxyAuth middleware verified the
+    // oauth2-proxy HMAC signature earlier in the chain. This protects
+    // against LAN clients that bypass oauth2-proxy (e.g. directly hitting
+    // a ClusterIP) and try to spoof. When HMAC is disabled (initial deploy
+    // before the signer sidecar lands), primary security is oauth2-proxy
+    // at the edge + NetworkPolicy + ClusterIP frontend — the header trust
+    // is delegated to those network controls.
+    if (
+      process.env.AUTH_PROXY_HMAC_ENABLED === 'true' &&
+      process.env.NODE_ENV === 'production' &&
+      req.proxyAuthVerified !== true
+    ) {
       logger.warn('authMiddleware: prod request with X-Forwarded-* but no verified proxy signature — rejecting', {
         path: req.path,
         method: req.method,
