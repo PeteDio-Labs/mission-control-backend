@@ -122,6 +122,22 @@ export function authMiddleware(
 ): void {
   const fromHeaders = userFromHeaders(req);
   if (fromHeaders) {
+    // SECURITY: in production, refuse to trust X-Forwarded-* headers unless
+    // the proxyAuth middleware verified the oauth2-proxy HMAC signature
+    // earlier in the chain. This protects against LAN clients that bypass
+    // oauth2-proxy (e.g. directly hitting a ClusterIP) and try to spoof.
+    if (process.env.NODE_ENV === 'production' && req.proxyAuthVerified !== true) {
+      logger.warn('authMiddleware: prod request with X-Forwarded-* but no verified proxy signature — rejecting', {
+        path: req.path,
+        method: req.method,
+        sourceIp: req.headers['x-real-ip'] ?? req.headers['x-forwarded-for'],
+      });
+      res.status(401).json({
+        error: 'Unauthenticated',
+        message: 'Auth-proxy signature required in production',
+      });
+      return;
+    }
     req.user = fromHeaders;
     next();
     return;

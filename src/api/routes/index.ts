@@ -32,6 +32,7 @@ import settingsRouter from './settings';
 import discordIdentitiesRouter from './discord-identities';
 import roadmapRouter from './roadmap';
 import { authMiddleware } from '../../middleware/auth';
+import { proxyAuthMiddleware } from '../../middleware/proxyAuth';
 
 const routes = Router();
 
@@ -61,6 +62,12 @@ apiV1Router.use('/discord', discordRouter);
 
 // Everything below this line is gated by authMiddleware (sets req.user from
 // oauth2-proxy headers or MOCK_USER_EMAIL fallback).
+//
+// proxyAuthMiddleware runs first so authMiddleware can refuse to trust
+// X-Forwarded-* headers in production unless the HMAC signature checked out.
+// In dev (no AUTH_PROXY_HMAC_SECRET) proxyAuth is a pass-through and the
+// MOCK_USER_EMAIL fallback inside authMiddleware handles auth.
+apiV1Router.use(proxyAuthMiddleware);
 apiV1Router.use(authMiddleware);
 
 apiV1Router.use('/me', meRouter);

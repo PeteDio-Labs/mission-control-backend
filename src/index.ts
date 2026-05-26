@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { logger } from './utils/logger';
 import { assertRequiredSecrets, MissingRequiredSecretsError } from './config/requiredSecrets';
+import { assertProxyAuthConfigured } from './middleware/proxyAuth';
 import { db } from './db/client';
 import { KubernetesConnector } from './connectors/kubernetes';
 import { ProxmoxConnector } from './connectors/proxmox';
@@ -43,6 +44,19 @@ try {
       error: (err as Error).message,
     });
   }
+  process.exit(1);
+}
+
+// AUTH.9 — fail closed if oauth2-proxy HMAC shared secret is missing in
+// production. Without it, authMiddleware would refuse all requests anyway,
+// but we surface the misconfiguration at boot so the pod crashloops with a
+// clear error instead of returning 401 to every user.
+try {
+  assertProxyAuthConfigured();
+} catch (err) {
+  logger.error('FATAL: AUTH_PROXY_HMAC_SECRET missing in production', {
+    error: (err as Error).message,
+  });
   process.exit(1);
 }
 
